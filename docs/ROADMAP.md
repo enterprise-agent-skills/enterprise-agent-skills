@@ -19,14 +19,15 @@ items under "Next" are not built yet.
 | CI | PR validation, security, scheduled quality report, optional live evaluation (disabled by default) |
 | Contributor tooling | `new:skill` scaffolder (with SAP metadata for ABAP skills), templates, `export:upstream` for microsoft/skills |
 | Community files | Contributing guide, code of conduct, security policy, governance, attribution, issue and PR templates |
+| Publication | Public repository [frontier-agent-skills/frontier-agent-skills-plugins](https://github.com/frontier-agent-skills/frontier-agent-skills-plugins) with protected `main` (pull requests and the `static-and-mock` and `scan` checks required), private vulnerability reporting, Dependabot, secret scanning with push protection, and Discussions |
 
 ## Next
 
-1. **Publish.** Create the GitHub organization `frontier-agent-skills`, push, and turn on
-   branch protection with the required checks. See [publishing.md](publishing.md).
-2. **End-to-end platform verification.** Install each plugin in Claude Code, Cowork, Copilot
+1. **End-to-end platform verification.** Install each plugin in Claude Code, Cowork, Copilot
    CLI, Codex, Cursor, and Gemini CLI; record results in
    [platform-compatibility.md](platform-compatibility.md).
+2. **First tagged release.** Tag `v0.1.0` once the checks pass on GitHub and attach the
+   quality reports.
 3. **Live system tests (opt-in).** Import the ABAP reference objects into SAP systems (an
    older ECC release and a current S/4HANA release, plus the BTP ABAP environment trial for
    ABAP Cloud), run the SAP syntax check, ABAP Unit, and ATC, and compare with the offline

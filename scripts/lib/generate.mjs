@@ -600,7 +600,11 @@ function vallySpec(skill, entry) {
   ];
   for (const sc of scenarios) {
     const split = splitIntoFiles(sc.mock_response);
-    let files = split.files;
+    let files = [...split.files, ...split.context];
+    // The explanation outside code files is part of the answer: the mock evaluation checks it,
+    // so the golden patch carries it as answer.md and live agents are asked to write it there.
+    const explained = files.length > 0 && split.preamble.length > 0;
+    if (explained) files = [{ path: "answer.md", content: `${split.preamble}\n` }, ...files];
     if (!files.length) {
       const fallback = (sc.validators ?? []).map(defaultFileFor).find(Boolean) ?? "response.txt";
       files = [{ path: fallback, content: sc.mock_response.endsWith("\n") ? sc.mock_response : `${sc.mock_response}\n` }];
@@ -608,6 +612,7 @@ function vallySpec(skill, entry) {
     out.push(`  - name: ${sc.name.replace(/_/g, "-")}`);
     out.push("    prompt: |-");
     for (const l of sc.prompt.trimEnd().split("\n")) out.push(l ? `      ${l}` : "");
+    if (explained) out.push("", "      Write your explanation to answer.md and each code object to its own file.");
     // Vally expects tags as a mapping; scenario tags are kept as one space-separated value.
     out.push("    tags:");
     out.push(`      scenario: ${sc.name}`);

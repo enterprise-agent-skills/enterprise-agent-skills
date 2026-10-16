@@ -35,11 +35,50 @@ stimuli:
       STAGE_ID, CUSTOMER, ORDER_DATE, CURRENCY, MATERIAL, QUANTITY, UNIT, STATUS; open rows
       have an empty STATUS) and creates one order per row with this function. A failed row
       must not stop or undo the others. Offer a test run and show every message per row.
+
+      Write your explanation to answer.md and each code object to its own file.
     tags:
       scenario: bapi_commit_per_document_ehp6
       labels: "bapi commit ecc release-aware"
     golden_patch:
       inline: |
+        --- /dev/null
+        +++ b/answer.md
+        @@ -0,0 +1,34 @@
+        +Target assumed: SAP ECC 6.0 EHP6, SAP_BASIS 7.31, Oracle. The report uses classic syntax
+        +only. Inline declarations, constructor operators, and the new ABAP SQL syntax need
+        +SAP_BASIS 7.40 and would not compile here.
+        +
+        +How it works:
+        +
+        +- Each staged row is its own LUW. After Z_FA_ORDER_CREATE returns, the report reads
+        +  RETURN first. A message of type E (error) or A (abort) means the order failed, and the
+        +  report calls BAPI_TRANSACTION_ROLLBACK. Otherwise it calls BAPI_TRANSACTION_COMMIT with
+        +  wait = 'X', which waits until the V1 update has saved the order, and checks the RETURN
+        +  of the commit as well. The order of the steps matters: a rollback cannot undo what a
+        +  commit has already passed to the update task.
+        +- A failed row rolls back only its own work, so the other rows are not affected.
+        +- Right before the commit the report registers Z_FA_ORDER_STAGE_SET_POSTED in the update
+        +  task. It sets STATUS in the same LUW as the order, so a row is marked only when its
+        +  order is saved, and the next run skips it.
+        +- Each row is locked with ENQUEUE_EZFA_ORDER_STAGE and its status is read again under the
+        +  lock, so two runs at the same time cannot post the same row.
+        +- The staged rows are read into an internal table before the loop, because a commit in
+        +  a SELECT loop would close the database cursor.
+        +- The test run passes iv_testrun = 'X': all checks run, nothing is saved, and the report
+        +  rolls back afterwards.
+        +- Every RETURN line is shown per staging row, including warnings.
+        +
+        +
+        +Create these objects as well: the lock object EZFA_ORDER_STAGE on ZFA_ORDER_STAGE (SE11),
+        +which generates ENQUEUE_EZFA_ORDER_STAGE and DEQUEUE_EZFA_ORDER_STAGE, and the update
+        +module below (SE37, processing type Update Module, start immediately), so that it runs
+        +in the same V1 update as the order.
+        +
+        +
+        +Terminated updates appear in SM13. Not verified offline: activation in your system, the
+        +DDIC types of ZFA_ORDER_STAGE and the order structures, the parameters of the generated
+        +lock modules, and a test with real data.
         --- /dev/null
         +++ b/src/zfa_order_upload.prog.abap
         @@ -0,0 +1,148 @@
@@ -233,11 +272,61 @@ stimuli:
       The structure ZFA_S_OPEN_ORDER exists in both systems. Write the ECC report that calls
       it and handles every kind of error. The S/4HANA team gave us a technical user for the
       connection.
+
+      Write your explanation to answer.md and each code object to its own file.
     tags:
       scenario: srfc_with_failure_handling_ehp4
       labels: "rfc security ecc release-aware iaas"
     golden_patch:
       inline: |
+        --- /dev/null
+        +++ b/answer.md
+        @@ -0,0 +1,45 @@
+        +Target assumed: SAP ECC 6.0 EHP4, SAP_BASIS 7.01, SQL Server. Running on AWS EC2 does not
+        +change the ABAP. SAP_BASIS 7.01 has no string templates or other 7.02 syntax, so the
+        +report uses classic statements only.
+        +
+        +Set up the connection first:
+        +
+        +1. In SM59, create the ABAP connection (type 3) ZFA_S4H_100 to the S/4HANA system and
+        +   enter the technical user and its password there, in the logon data of the
+        +   destination. They never go into code, constants, tables, or variants. Create a
+        +   destination with the same name in each ECC system of the landscape, pointing to the
+        +   matching S/4HANA system.
+        +2. Protect the destination: enter a value in "Authorization for Destination" on the tab
+        +   Logon & Security, and give only the users of this report authorization object S_ICF
+        +   with ICF_FIELD DEST and that value.
+        +3. In S/4HANA, create the technical user with user type System or Communication, which
+        +   cannot log on in dialog. Give it S_RFC with RFC_TYPE FUGR, RFC_NAME = the function
+        +   group of Z_FA_OPEN_ORDERS_GET, and ACTVT 16, plus the authorizations the function
+        +   module checks itself.
+        +4. Trusted RFC (SMT1, S_RFCACL) would log on users without a password. Use it only if
+        +   your security team decides so.
+        +
+        +Check that ZFA_S_OPEN_ORDER has the same components with the same types and lengths in
+        +both systems (SE11). The same data element can differ: the material number has 18
+        +characters in ECC and up to 40 in S/4HANA, which would give the structure a different
+        +layout on each side.
+        +
+        +How the report handles errors:
+        +
+        +- SYSTEM_FAILURE: an error in S/4HANA, such as a runtime error or a message of type A,
+        +  E, or X. The text is in gv_rfc_message; runtime errors are also in ST22 in S/4HANA.
+        +- COMMUNICATION_FAILURE: no connection, a failed logon, or a broken network. Test the
+        +  destination in SM59.
+        +- CUSTOMER_NOT_FOUND: the function module's own exception.
+        +- RETURN: messages of type E or A from the function module.
+        +- The remote call triggers a database commit in ECC, so the report calls it before it
+        +  changes any data and never inside a SELECT loop.
+        +- The authorization check in ECC matters because the technical user in S/4HANA may see
+        +  more than the person who runs the report.
+        +
+        +
+        +Create the authorization object ZFA_S4ORD (field ACTVT) in SU21 and assign it to the
+        +roles of the users who may run the report.
+        +
+        +Not verified offline: activation in ECC, the destination and logon in SM59, and a test
+        +call against the S/4HANA system.
         --- /dev/null
         +++ b/src/zfa_s4_open_orders.prog.abap
         @@ -0,0 +1,70 @@
@@ -329,11 +418,60 @@ stimuli:
       ORDER_DATE, CURRENCY, EXT_REF) and the table IT_ITEMS (ZFA_S_ORDER_ITEM with MATERIAL,
       QUANTITY, UNIT), returns EV_ORDER_ID and a RETURN table of BAPIRET2, saves through the
       update task, and does not commit. Also tell me how to register the function module.
+
+      Write your explanation to answer.md and each code object to its own file.
     tags:
       scenario: idoc_inbound_function_ehp7_basis740_sp08
       labels: "idoc ale ecc release-aware"
     golden_patch:
       inline: |
+        --- /dev/null
+        +++ b/answer.md
+        @@ -0,0 +1,44 @@
+        +Target assumed: SAP ECC 6.0 EHP7 on SAP_BASIS 7.40 SP08. The IDoc inbound interface is
+        +the same on every release, and the function module uses classic syntax, so it also runs
+        +on older systems.
+        +
+        +The function module does not commit. The ALE layer commits after it has written the
+        +status records the function returns, so the order and the IDoc status are saved
+        +together, and a failed IDoc leaves nothing behind because Z_FA_ORDER_CREATE registers
+        +nothing when it reports an error. Per IDoc it returns status 53 (posted) or 51 (not
+        +posted, with the message from RETURN). Both E and A in RETURN mean failure.
+        +WORKFLOW_RESULT is 0 when all IDocs were posted and 99999 when one failed, which starts
+        +the error workflow. RETURN_VARIABLES gets Processed_IDOCs and Appl_Objects for posted
+        +IDocs and Error_IDOCs for failed ones; the names are case-sensitive. IN_UPDATE_TASK is X
+        +because Z_FA_ORDER_CREATE posts through the update task.
+        +
+        +Segment fields arrive as characters. A partner that sends a quantity such as 10,5 would
+        +make the move into the typed quantity field raise CX_SY_CONVERSION_NO_NUMBER, so the move
+        +is wrapped in TRY and such an IDoc gets status 51 instead of a short dump. If an EDI
+        +partner sends ISO codes for units or currencies, convert them first, for example with
+        +UNIT_OF_MEASURE_ISO_TO_SAP; check its interface in SE37.
+        +
+        +
+        +Create the function module in its own function group in SE37 with exactly this
+        +interface; the ALE layer calls it by name with these parameters. In message class
+        +ZFA_ORDER, message 010 should read "Order &1 created" and message 020 "Quantity &1 is
+        +not a valid number".
+        +
+        +Register it:
+        +
+        +1. WE57: enter Z_FA_IDOC_INPUT_ORDER with type F (function module), basic type
+        +   ZFA_ORDER01, message type ZFA_ORDER, and direction 2 (inbound). Object type takes
+        +   the BOR object type of the application object, if there is one.
+        +2. BD51: maintain the input type of the function module and whether dialog is allowed.
+        +3. WE42: create the inbound process code ZFA_ORDER with "Processing with ALE" and
+        +   "Processing by function module", and assign the function module.
+        +4. WE20: in the partner profile of the sending logical system (partner type LS), add an
+        +   inbound parameter for ZFA_ORDER with process code ZFA_ORDER. "Trigger immediately"
+        +   posts on arrival; "Trigger by background program" leaves the IDocs in status 64 for
+        +   report RBDAPP01.
+        +5. Test with WE19, then check the result in WE02 or WE05. Reprocess failed IDocs (status
+        +   51) in BD87 after fixing the cause.
+        +
+        +Not verified offline: the function module interface, which SE37 keeps outside the
+        +source, activation, and a test with a real IDoc. The syntax check here covers only the
+        +statements of the body.
         --- /dev/null
         +++ b/src/zfa_order_idoc.fugr.z_fa_idoc_input_order.abap
         @@ -0,0 +1,132 @@
@@ -504,11 +642,66 @@ stimuli:
           RAISING
             /iwbep/cx_mgw_busi_exception
             /iwbep/cx_mgw_tech_exception.
+
+      Write your explanation to answer.md and each code object to its own file.
     tags:
       scenario: segw_entityset_paging_ehp8
       labels: "gateway odata segw performance ecc"
     golden_patch:
       inline: |
+        --- /dev/null
+        +++ b/answer.md
+        @@ -0,0 +1,50 @@
+        +Target assumed: SAP ECC 6.0 EHP8, SAP_BASIS 7.50 with SAP_GWFND 7.50, Oracle. The code
+        +goes into ZCL_ZFA_PRODUCT_DPC_EXT as a redefinition. The generated class
+        +ZCL_ZFA_PRODUCT_DPC stays untouched because regeneration overwrites it, so this answer
+        +contains only the _EXT class.
+        +
+        +What the method does, and why:
+        +
+        +- It reads the request only through io_tech_request_context, which uses ABAP field
+        +  names. SAP marks the other importing parameters of the generated method as obsolete.
+        +- $filter: get_osql_where_clause( ) returns the filter as an ABAP SQL condition built by
+        +  the framework. Nothing from the request is concatenated into SQL by hand. SAP does not
+        +  document how the method reports a filter it cannot convert, so the method refuses to
+        +  read when the request has a filter but the condition is empty.
+        +- $count returns only the number from SELECT COUNT(*). $inlinecount is counted the same
+        +  way, after $filter and before paging, because it must be the total and not the size
+        +  of the page.
+        +- Paging over two million rows: every response has at most 1000 rows. A request without
+        +  $top, or with a larger $top, gets a full page and a skiptoken; the framework turns the
+        +  token into a next link and lowers $top in that link by the rows already sent. The
+        +  token is the position of the next row. get_top( ) returns an empty string without
+        +  $top, so $top=0 returns no rows instead of all of them.
+        +- The SELECT reads at most offset plus page size rows and deletes the skipped rows
+        +  afterwards, because OFFSET needs SAP_BASIS 7.51. Pages that start deeper than 10000
+        +  rows are rejected for the same reason; adjust both limits to your clients. The limits
+        +  are checked before any arithmetic, so a huge $skip cannot overflow.
+        +- $orderby: only known properties reach the dynamic ORDER BY, and the key is added last
+        +  so that pages stay stable.
+        +- A missing authorization returns HTTP 403. Errors in the dynamic SQL become
+        +  /IWBEP/CX_MGW_BUSI_EXCEPTION, which the client receives as an error response instead
+        +  of a short dump.
+        +- The inline declarations in order_by_columns need SAP_BASIS 7.40 SP02, which 7.50 has.
+        +- After an upgrade to 7.51 or later the database can skip the rows with OFFSET. That
+        +  statement uses the strict syntax check, so separate the dynamic ORDER BY columns with
+        +  commas there.
+        +
+        +
+        +Then activate the class, register or refresh the service in /IWFND/MAINT_SERVICE, and
+        +test requests such as ProductSet?$filter=CATEGORY eq 'TOOLS'&$orderby=PRICE
+        +desc&$top=20&$skip=40&$inlinecount=allpages and ProductSet without $top (it must return
+        +1000 rows and a next link) in /IWFND/GW_CLIENT. Errors from this code appear in
+        +/IWBEP/ERROR_LOG; framework errors in /IWFND/ERROR_LOG.
+        +
+        +Make sure an index supports the columns your clients filter and sort by most, and
+        +create the authorization object ZFA_PROD with field ACTVT in SU21.
+        +
+        +Not verified offline: activation against the real generated classes, the exact
+        +signature of the generated method on your support package, which $filter expressions
+        +get_osql_where_clause( ) converts on your Gateway release, and the constant for HTTP
+        +status 403 in CS_HTTP_STATUS_CODES of the exception class (SE24), which you can use
+        +instead of the literal.
         --- /dev/null
         +++ b/src/zcl_zfa_product_dpc_ext.clas.abap
         @@ -0,0 +1,174 @@
@@ -701,11 +894,42 @@ stimuli:
       most 5 running at the same time. Print one line per company code with the count or the
       error. Our remote-enabled function module Z_FA_OPEN_ITEMS_COUNT has IMPORTING IV_BUKRS
       TYPE BUKRS and EXPORTING EV_ITEMS TYPE I. Write the report.
+
+      Write your explanation to answer.md and each code object to its own file.
     tags:
       scenario: arfc_parallel_counts_ehp6
       labels: "rfc arfc parallel ecc release-aware iaas"
     golden_patch:
       inline: |
+        --- /dev/null
+        +++ b/answer.md
+        @@ -0,0 +1,26 @@
+        +Target assumed: SAP ECC 6.0 EHP6, SAP_BASIS 7.31, IBM Db2. Running on Google Cloud
+        +virtual machines does not change the ABAP.
+        +
+        +How the report works:
+        +
+        +- Each company code runs as an asynchronous RFC (STARTING NEW TASK) on a server of the
+        +  system, chosen with DESTINATION IN GROUP DEFAULT; an RFC server group from RZ12 works
+        +  the same way.
+        +- A public callback method collects each result with RECEIVE RESULTS, which it must
+        +  always execute, and stores the count or the error per task.
+        +- At most p_tasks calls run at the same time: before each start the report waits with
+        +  WAIT UNTIL until fewer are running. RESOURCE_FAILURE means that no server of the group
+        +  has free resources; the report then waits until one of its own tasks ends and tries
+        +  again, up to ten times.
+        +- The modern wait statement for callbacks, available from SAP_BASIS 7.40 SP02, is a
+        +  syntax error on 7.31, so the report uses WAIT UNTIL ... UP TO ... SECONDS.
+        +- Task IDs have at most eight characters (ZFA00001), as the 7.31 keyword documentation
+        +  requires.
+        +- Every call and every WAIT commits the database, so the company codes are read into an
+        +  internal table before the loop.
+        +
+        +
+        +The users who run the report need S_RFC for the function group of
+        +Z_FA_OPEN_ITEMS_COUNT, because the calls run through RFC. Not verified offline:
+        +activation, the resources of the servers in RZ12 or the default group, and the run
+        +time with real data.
         --- /dev/null
         +++ b/src/zfa_parallel_counts.prog.abap
         @@ -0,0 +1,109 @@
@@ -834,11 +1058,44 @@ stimuli:
       ORDER_DATE, CURRENCY, and EXT_REF; segment Z1FA_ORDER_ITM has MATERIAL, QUANTITY, and
       UNIT. The receiver is maintained in the distribution model. Write a report that sends
       one order and tells the user what happened, and list the configuration we need.
+
+      Write your explanation to answer.md and each code object to its own file.
     tags:
       scenario: idoc_outbound_commit_ehp6
       labels: "idoc ale outbound commit ecc"
     golden_patch:
       inline: |
+        --- /dev/null
+        +++ b/answer.md
+        @@ -0,0 +1,28 @@
+        +Target assumed: SAP ECC 6.0 EHP6, SAP_BASIS 7.31, Oracle. MASTER_IDOC_DISTRIBUTE and the
+        +IDoc interface have not changed for many releases, and the report uses classic syntax.
+        +
+        +How the report works:
+        +
+        +- The control record gets only MESTYP and IDOCTP. RCVPRT and RCVPRN stay empty, so ALE
+        +  takes the receivers from the distribution model (BD64).
+        +- Each data record holds SEGNAM and the segment structure in SDATA.
+        +- The explicit commit after MASTER_IDOC_DISTRIBUTE is mandatory: without it the IDoc is
+        +  created but never sent, and the database commit at the end of the program is not
+        +  enough.
+        +- If the distribution model has no receiver, the function raises no exception and
+        +  returns an empty COMMUNICATION_IDOC_CONTROL table, so the report checks it.
+        +
+        +
+        +Configuration in the sending system:
+        +
+        +1. Logical systems in BD54, and the own logical system assigned to the client in SCC4.
+        +2. SM59: an ABAP connection (type 3) to the partner system, with the logon data there.
+        +3. WE21: a transactional RFC port that uses this destination.
+        +4. BD64: a distribution model view with message type ZFA_ORDER from the own logical
+        +   system to the partner's logical system.
+        +5. WE20: the outbound partner profile of the partner (partner type LS, BD82 can generate
+        +   it from BD64) with message type ZFA_ORDER, the port, output mode, and basic type
+        +   ZFA_ORDER01. WE82 must assign ZFA_ORDER to ZFA_ORDER01.
+        +
+        +Watch the IDocs in WE02 or WE05 and the tRFC calls of the port in SM58. Not verified
+        +offline: activation, the segment definitions, and a test with the partner system.
         --- /dev/null
         +++ b/src/zfa_order_idoc_send.prog.abap
         @@ -0,0 +1,71 @@
@@ -932,11 +1189,55 @@ stimuli:
       (data element ZFA_ORDER_ID). Order numbers come from number range object ZFA_ORDER,
       interval 01. Messages are in message class ZFA_ORDER, and authorization object ZFA_ORDER
       has the field ACTVT. Write it so that the callers stay in control of the transaction.
+
+      Write your explanation to answer.md and each code object to its own file.
     tags:
       scenario: bapi_function_module_ehp4
       labels: "bapi rfc commit ecc release-aware"
     golden_patch:
       inline: |
+        --- /dev/null
+        +++ b/answer.md
+        @@ -0,0 +1,39 @@
+        +Target assumed: SAP ECC 6.0 EHP4, SAP_BASIS 7.01, SAP MaxDB. The code uses classic
+        +syntax and 'X' instead of abap_true, because on 7.01 the constants of type pool ABAP need
+        +TYPE-POOLS abap.
+        +
+        +Set the attribute "Remote-Enabled Module" in SE37 and maintain the interface shown in
+        +the comment block. The rules the function follows, from SAP's BAPI programming guide:
+        +
+        +- It never commits and calls no transaction or report. The order is written by the
+        +  update module Z_FA_ORDER_SAVE, which runs only when the caller commits, so a caller
+        +  can post several documents in one LUW or roll everything back. An RFC call ends with a
+        +  database commit in the called system, which is another reason to write only through
+        +  the update task.
+        +- Every error goes into RETURN (BAPIRET2). MESSAGE ... INTO fills the text without
+        +  sending a message, because a message of type E or A would end an RFC call with
+        +  SYSTEM_FAILURE. The interface declares no class-based exceptions, which cannot cross
+        +  RFC in customer releases.
+        +- It checks the authorization itself; S_RFC only decides who may call the function
+        +  group.
+        +- IV_TESTRUN runs all checks, writes nothing, and draws no order number.
+        +- All parameters are passed by value, and RFC does not check their typing, so the
+        +  function validates its input.
+        +
+        +
+        +The helper that turns the current message into a RETURN line, in an include of the
+        +same function group:
+        +
+        +
+        +The update module (SE37, processing type Update Module, start immediately). It runs in
+        +the update task after the caller's commit; a termination message there rolls back the
+        +whole update, so no half-saved order remains:
+        +
+        +
+        +Callers check RETURN for type E or A and then call BAPI_TRANSACTION_COMMIT or
+        +BAPI_TRANSACTION_ROLLBACK; remote callers do so through the same destination. Create
+        +messages 001 to 005 and 010 in message class ZFA_ORDER, and give RFC users S_RFC for
+        +function group ZFA_ORDER_API.
+        +
+        +Not verified offline: the interface, which SE37 keeps outside the source, activation,
+        +and the field names of ZFA_ORDER and ZFA_ORDER_ITEM.
         --- /dev/null
         +++ b/src/zfa_order_api.fugr.z_fa_order_create.abap
         @@ -0,0 +1,74 @@

@@ -25,11 +25,19 @@ stimuli:
       SELECT vbeln, auart, kunnr FROM vbak
         WHERE erdat >= @lv_from
         INTO TABLE @DATA(orders).
+
+      Write your explanation to answer.md and each code object to its own file.
     tags:
       scenario: rewrite_direct_table_read
       labels: "basic rewrite released-api"
     golden_patch:
       inline: |
+        --- /dev/null
+        +++ b/answer.md
+        @@ -0,0 +1,3 @@
+        +The table is not released for ABAP Cloud. Its successor in SAP's Cloudification
+        +Repository is I_SalesDocument. Confirm the field names in ADT for your release, then
+        +run ATC with the check "Usage of Released APIs (Cloudification Repository)".
         --- /dev/null
         +++ b/src/zcl_fa_recent_sales_docs.clas.abap
         @@ -0,0 +1,25 @@

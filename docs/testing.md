@@ -129,7 +129,9 @@ release gating, these tests show it.
 
 `npm run build` generates `tests/scenarios/<skill>/vally/eval.yaml` from the scenarios: one
 stimulus per scenario with the reference answer as a golden patch and one `run-command` grader
-that runs `tests/harness/vally-grade.mjs` (the same checks as the mock evaluation).
+that runs `tests/harness/vally-grade.mjs` (the same checks as the mock evaluation). The grader
+sees only files, so the explanation part of a reference answer goes into the golden patch as
+`answer.md`, and the stimulus asks a live agent to write its explanation there too.
 `npm run eval:vally` then runs, with telemetry disabled:
 
 1. `vally lint <plugin>/skills --known-domains config/known-domains.txt --strict`
