@@ -40,11 +40,49 @@ stimuli:
 
       Implement it for sales organization 1000: standard orders (order type ZOR) in EUR with a
       net value above 50,000 must be reported as blocked, with a reason. Include a unit test.
+
+      Write your explanation to answer.md and each code object to its own file.
     tags:
       scenario: implement_filtered_badi_ehp8
       labels: "badi ecc implementation unit-test"
     golden_patch:
       inline: |
+        --- /dev/null
+        +++ b/answer.md
+        @@ -0,0 +1,33 @@
+        +Target assumed: SAP ECC 6.0 EHP8 (SAP_BASIS 7.50), Standard ABAP, Microsoft SQL Server.
+        +Where the system runs does not change the code.
+        +
+        +There is no Customizing for this rule, and ZBADI_FA_ORDER_CHECK is your own extension
+        +point, so the rule belongs in a BAdI implementation. Create it in SAP GUI, because ECC
+        +tops out at SAP_BASIS 7.50 and ADT has an editor for BAdI implementations only from
+        +SAP_BASIS 7.57:
+        +
+        +1. SE19, option "New BAdI", enhancement spot ZES_FA_SD_ORDER, Create Implementation.
+        +2. Simple enhancement implementation ZEI_FA_SD_ORDER_1000 in your package, BAdI
+        +   implementation ZBI_FA_ORDER_CHECK_1000 for ZBADI_FA_ORDER_CHECK, implementing class
+        +   ZCL_FA_ORDER_CHECK_1000.
+        +3. Filter value VKORG = 1000.
+        +4. Keep "Implementation is active" set, activate the enhancement implementation and the
+        +   class, and record both on one workbench request.
+        +
+        +The BAdI is single use, so only one active implementation may match VKORG 1000. A second
+        +one makes GET BADI raise CX_BADI_MULTIPLY_IMPLEMENTED in the calling program. Other sales
+        +organizations keep getting the fallback class.
+        +
+        +The method only evaluates the order and returns the result in EV_BLOCKED and EV_REASON.
+        +COMMIT WORK, table writes, and messages stay out of it: the method runs inside the
+        +caller's logical unit of work, and the caller decides what to show.
+        +
+        +
+        +
+        +Objects to create: enhancement implementation ZEI_FA_SD_ORDER_1000, BAdI implementation
+        +ZBI_FA_ORDER_CHECK_1000, class ZCL_FA_ORDER_CHECK_1000, and one workbench request. If the
+        +limit differs per order type or changes often, move it to a customizing table maintained
+        +with SM30 instead of constants.
+        +
+        +Not verified without the system: activation, the filter value in SE19, and the unit test
+        +run.
         --- /dev/null
         +++ b/src/zcl_fa_order_check_1000.clas.abap
         @@ -0,0 +1,20 @@
@@ -157,11 +195,46 @@ stimuli:
       Write a report that selects the sales orders of one sales organization and creation date
       range, asks the BAdI for each order whether it is blocked, and shows the result in an ALV
       list. The report must also run in systems where nobody has implemented the BAdI.
+
+      Write your explanation to answer.md and each code object to its own file.
     tags:
       scenario: call_own_badi_ehp5
       labels: "badi ecc release-aware iaas"
     golden_patch:
       inline: |
+        --- /dev/null
+        +++ b/answer.md
+        @@ -0,0 +1,30 @@
+        +Target assumed: SAP ECC 6.0 EHP5 (SAP_BASIS 7.02), Standard ABAP, Oracle. Running on AWS
+        +EC2 does not change the code. The report uses no 7.40 syntax: no inline declarations, no
+        +constructor expressions, and the classic ABAP SQL syntax.
+        +
+        +Make the BAdI safe for systems without an implementation in two places:
+        +
+        +1. In the BAdI definition (SE18 or SE80, enhancement spot ZES_FA_SD_ORDER), enter the
+        +   fallback class ZCL_FA_ORDER_CHECK_FALLBACK shown below. GET BADI then returns it when
+        +   no implementation is active and also when no implementation matches the sales
+        +   organization, so the call never fails for lack of an implementation.
+        +2. In the report, catch CX_BADI_NOT_IMPLEMENTED anyway. It occurs only if the fallback
+        +   class is removed from the definition, and the report then shows no blocks instead of
+        +   ending in a short dump.
+        +
+        +The report gets the BAdI once, before it processes the orders, because the filter value is
+        +the selection parameter. Inside the LOOP AT the report only calls the BAdI: the SELECT and
+        +GET BADI each run once, before the loop. CX_BADI_MULTIPLY_IMPLEMENTED means that two
+        +active implementations match the same sales organization. That is a configuration error,
+        +so the report stops with a message. The reference is typed with the BAdI name, not with
+        +the interface. CL_EXITHANDLER is the factory for classic BAdIs and plays no part here.
+        +
+        +
+        +
+        +Objects to create: the program with selection texts for P_VKORG and S_ERDAT, the fallback
+        +class, and the fallback class entry in the BAdI definition, all on one workbench request.
+        +Replace the authorization object if your organization uses another one for sales
+        +documents.
+        +
+        +Not verified without the system: activation, the authorization object, and whether the
+        +BAdI definition already names the fallback class.
         --- /dev/null
         +++ b/src/zfa_order_release_check.prog.abap
         @@ -0,0 +1,78 @@
@@ -271,11 +344,99 @@ stimuli:
       10,000 EUR or more must not be saved without an approval number. We already added the
       field ZZAPPROVAL to VBAK with an append structure and show it on the header screen.
       Where and how should we implement the check?
+
+      Write your explanation to answer.md and each code object to its own file.
     tags:
       scenario: sd_save_check_user_exit
       labels: "user-exit sd customizing luw"
     golden_patch:
       inline: |
+        --- /dev/null
+        +++ b/answer.md
+        @@ -0,0 +1,83 @@
+        +Target assumed: SAP ECC 6.0 EHP7 with SAP_BASIS 7.40 SP08, Standard ABAP, IBM Db2.
+        +Running on Azure does not change the code.
+        +
+        +1. Check Customizing first. An incompleteness procedure makes a field mandatory for a
+        +   sales document type (Customizing for Sales and Distribution > Basic Functions > Log of
+        +   Incomplete Items > Define Incompleteness Procedures, assigned to the order type in
+        +   Assign Incompleteness Procedures), and the sales document type decides whether an
+        +   incomplete document can be saved. Incompleteness checks whether a field is filled, not
+        +   the net value. If the business accepts "approval number required for every ZOR order",
+        +   this solves it without any code; confirm that with your SD consultant first.
+        +
+        +2. If the 10,000 EUR threshold must stay, the code option is the user exit
+        +   USEREXIT_SAVE_DOCUMENT_PREPARE in include MV45AFZZ of program SAPMV45A. SAP's IMG
+        +   documentation describes it as the last place to change or check a sales document
+        +   before it is saved. Be clear about what it is: SAP classifies application user exits
+        +   as modifications. On ECC, changing MV45AFZZ needs an SSCR object key, and the key
+        +   becomes invalid after a release upgrade. The include appears in SPAU only when an
+        +   upgrade delivers a new version of it, so keep it on your list of modified objects
+        +   (SE95) and check it after every upgrade. After a later conversion to S/4HANA there are
+        +   no SSCR keys, but the change is still a modification. If SE18 or the IMG documents a
+        +   BAdI for checks at save time in your release, prefer that.
+        +
+        +   Do not request an access key for SAPMV45A itself, and do not create an implicit
+        +   enhancement in FORM BELEG_SICHERN: the user exit is the place SAP provides for this
+        +   check.
+        +
+        +3. Put the rule in a class and unit test it there; keep the routine in MV45AFZZ to a few
+        +   lines.
+        +
+        +
+        +
+        +The routine in MV45AFZZ. This is a fragment, because it uses the global work area VBAK of
+        +SAPMV45A:
+        +
+        +FORM userexit_save_document_prepare.
+        +  IF zcl_fa_sd_approval_rule=>approval_missing( iv_auart    = vbak-auart
+        +                                                iv_vkorg    = vbak-vkorg
+        +                                                iv_netwr    = vbak-netwr
+        +                                                iv_waerk    = vbak-waerk
+        +                                                iv_approval = vbak-zzapproval ) = abap_true.
+        +    MESSAGE e001(zfa_sd).
+        +  ENDIF.
+        +ENDFORM.
+        +
+        +4. Test the error message in dialog before you transport. In VA01 and VA02 the save runs
+        +   while the function code is processed, outside any FIELD or CHAIN statement, so after
+        +   the error message no field is ready for input: users report that the order screen
+        +   becomes display-only and that they have to leave the order without saving. If that is
+        +   not acceptable, a common approach in dialog is a type S message with DISPLAY LIKE 'E'
+        +   followed by LEAVE TO SCREEN sy-dynnr, which skips the save and keeps the order
+        +   editable. SAP does not document this for SAPMV45A, so test it in VA01 and VA02 on your
+        +   release, and keep the error message for BAPI, IDoc, and batch input processing, which
+        +   have no screen. The incompleteness procedure from step 1 avoids the problem entirely.
+        +
+        +5. Check the other channels. BAPI_SALESORDER_CREATEFROMDAT2 and the other SD BAPIs take
+        +   customer fields of VBAK only through EXTENSIONIN, and ZZAPPROVAL must also be added to
+        +   the extension structures that SAP Note 143580 describes (BAPE_VBAK, BAPE_VBAKX,
+        +   VBAKKOZ, VBAKKOZX). IDoc inbound processing needs its own mapping. Until every
+        +   interface that creates ZOR orders supplies the field, the check rejects those orders,
+        +   so agree on it with the interface owners.
+        +
+        +6. Rules for this exit.
+        +
+        +COMMIT WORK and ROLLBACK WORK do not belong here. The routine runs at the start of SAP's
+        +save, and SAP commits once, at the end.
+        +
+        +CALL TRANSACTION and SUBMIT are not allowed either: the called program would commit in
+        +the middle of the save.
+        +
+        +Do not write VBAK yourself. The screen fills ZZAPPROVAL, and SAP saves it with the
+        +document.
+        +
+        +Do not put the check into USEREXIT_SAVE_DOCUMENT. That routine runs right before the
+        +commit and is meant for writing your own tables in the update task.
+        +
+        +Objects to create: message class ZFA_SD with message 001 ("Approval number required for
+        +orders of 10,000 EUR or more"), class ZCL_FA_SD_APPROVAL_RULE, the change to MV45AFZZ with
+        +its object key, the BAPI extension appends if interfaces create ZOR orders, and one
+        +workbench request.
+        +
+        +Not verified without the system: activation, the screen behavior after the message in
+        +your release, the message behavior in BAPI and IDoc processing, and whether your release
+        +offers a BAdI for this check.
         --- /dev/null
         +++ b/src/zcl_fa_sd_approval_rule.clas.abap
         @@ -0,0 +1,28 @@
@@ -442,11 +603,49 @@ stimuli:
       Our new class ZCL_FA_ORDER_SERVICE receives a table of orders (VBELN, VKORG, NETWR) and
       must let the BAdI adjust the net value of each order. Systems without an active
       implementation must keep working. Please write the class with a unit test.
+
+      Write your explanation to answer.md and each code object to its own file.
     tags:
       scenario: call_classic_badi_ehp4
       labels: "classic-badi ecc release-aware unit-test"
     golden_patch:
       inline: |
+        --- /dev/null
+        +++ b/answer.md
+        @@ -0,0 +1,33 @@
+        +Target assumed: SAP ECC 6.0 EHP4 (SAP_BASIS 7.01), Standard ABAP, SAP MaxDB. The code uses
+        +only 7.00 syntax: no 7.02 expressions, test properties as pseudo comments, and
+        +CL_AUNIT_ASSERT for the assertions.
+        +
+        +ZFA_ORDER_EXIT is a classic BAdI, so the caller gets its instance from the factory
+        +CL_EXITHANDLER=>GET_INSTANCE and calls the interface method directly. The statements
+        +GET BADI and CALL BADI work only for BAdIs defined in an enhancement spot, so they cannot
+        +reach ZFA_ORDER_EXIT unless it is migrated.
+        +
+        +How the class handles it:
+        +
+        +1. The constructor gets the instance once, with null_instance_accepted = 'X'. Without an
+        +   active implementation the reference stays initial, so the class checks it before it
+        +   calls the BAdI, and systems without an implementation keep the net values unchanged.
+        +2. The class passes the sales organization in FLT_VAL with every call, because a classic
+        +   BAdI receives its filter value per call. As the BAdI is filter-dependent and not
+        +   multiple use, each sales organization can have its own active implementation.
+        +3. GET_INSTANCE reads the BAdI administration data, so the class never calls it per order.
+        +4. The constructor accepts a test double, so the unit test does not depend on which
+        +   implementations are active in the test system.
+        +
+        +
+        +
+        +Objects to create: class ZCL_FA_ORDER_SERVICE with its test class, on one workbench
+        +request. The BAdI definition and its interface stay as they are.
+        +
+        +Because your team owns ZFA_ORDER_EXIT, consider migrating it to a kernel BAdI in SE18
+        +(Utilities > Migrate Classic BAdI) in the system where it was created. SAP regenerates
+        +the proxy class, so existing CL_EXITHANDLER calls keep working, and new callers can use
+        +GET BADI. Define any new call point as a kernel BAdI, not as a classic one.
+        +
+        +Not verified without the system: activation, which implementations are active for each
+        +sales organization, and the unit test run.
         --- /dev/null
         +++ b/src/zcl_fa_order_service.clas.abap
         @@ -0,0 +1,56 @@
@@ -578,11 +777,56 @@ stimuli:
 
       In Spain the discount must be 10 percent from a net value of 5,000, and nothing below.
       How do we implement that?
+
+      Write your explanation to answer.md and each code object to its own file.
     tags:
       scenario: implement_enhancement_section_ehp6
       labels: "plug-in ecc enhancement-section release-aware"
     golden_patch:
       inline: |
+        --- /dev/null
+        +++ b/answer.md
+        @@ -0,0 +1,40 @@
+        +Target assumed: SAP ECC 6.0 EHP6 (SAP_BASIS 7.31), Standard ABAP, Oracle. Spain runs its
+        +own system, so a plug-in there changes the report only for Spain. A plug-in without a
+        +switch is active for every user of the system it lives in.
+        +
+        +The central team built the explicit option ENHANCEMENT-SECTION zfa_es_price_discount into
+        +ZFA_PRICE_REPORT for exactly this case. Implement the section with a source code plug-in;
+        +do not change or copy the program.
+        +
+        +1. Open the report in SE38 or SE80 in SAP GUI and switch to enhancement mode with the
+        +   Enhance button. ADT is no option on 7.31: it shows plug-in markers only from 7.31 SP11
+        +   and edits plug-ins only from 7.53.
+        +2. Right-click the section and choose Enhancement Implementation > Create Implementation.
+        +   Create a simple enhancement implementation such as ZFA_EI_PRICE_ES in your own package,
+        +   so it travels on your transports and not on the central team's.
+        +3. The new plug-in starts with a copy of the original code. Replace that copy with the
+        +   call to the class below. The editor generates the ENHANCEMENT and ENDENHANCEMENT lines;
+        +   write only the code between them.
+        +4. Activate the enhancement implementation. Exactly one plug-in replaces a section, and
+        +   without an active plug-in the original code runs, so check that no other
+        +   implementation of zfa_es_price_discount is active in your system.
+        +
+        +Upgrade and change behavior: the plug-in is stored in your enhancement implementation, so
+        +new versions of the report do not overwrite it. Your plug-in replaces the whole section,
+        +so a change the central team makes inside the section does not reach Spain. Compare each
+        +new version of the section with your plug-in when it arrives; during upgrades, SPAU_ENH
+        +lists plug-ins whose section code changed.
+        +
+        +The rule lives in a class so it can be unit tested:
+        +
+        +
+        +
+        +The code inside the plug-in, a fragment because it uses the report's globals:
+        +
+        +  gv_discount = zcl_fa_es_discount_rule=>discount( p_netwr ).
+        +
+        +Objects to create: enhancement implementation ZFA_EI_PRICE_ES and class
+        +ZCL_FA_ES_DISCOUNT_RULE with its test class, on one workbench request in your package.
+        +
+        +Not verified without the system: the spot and section names in your system, activation,
+        +and whether another implementation of the section is already active.
         --- /dev/null
         +++ b/src/zcl_fa_es_discount_rule.clas.abap
         @@ -0,0 +1,19 @@

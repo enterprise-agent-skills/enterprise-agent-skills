@@ -159,11 +159,17 @@ stimuli:
       not be before the begin date. When the user corrects the dates in the draft, the
       error must disappear and both fields should be highlighted while the error exists.
       Show the behavior definition lines and the handler implementation.
+
+      Write your explanation to answer.md and each code object to its own file.
     tags:
       scenario: validation_with_state_messages
       labels: "validation messages draft"
     golden_patch:
       inline: |
+        --- /dev/null
+        +++ b/answer.md
+        @@ -0,0 +1,1 @@
+        +Add the validation to the behavior definition and list it in the Prepare action:
         --- /dev/null
         +++ b/src/zr_travel.bdef.asbdef
         @@ -0,0 +1,2 @@
@@ -224,11 +230,18 @@ stimuli:
       Fiori elements list report and object page. I need the projection view, projection
       behavior definition including the draft actions and the custom action acceptTravel,
       UI annotations, and the service definition.
+
+      Write your explanation to answer.md and each code object to its own file.
     tags:
       scenario: ui_service_projection
       labels: "service projection fiori-elements"
     golden_patch:
       inline: |
+        --- /dev/null
+        +++ b/answer.md
+        @@ -0,0 +1,2 @@
+        +After activating these objects, create service binding ZUI_Travel_O4 with binding type
+        +OData V4 - UI and publish it.
         --- /dev/null
         +++ b/src/zc_travel.ddls.asddls
         @@ -0,0 +1,17 @@

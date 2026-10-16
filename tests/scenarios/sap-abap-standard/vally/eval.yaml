@@ -22,11 +22,18 @@ stimuli:
       Write a report that lists sales orders for one sales organization and a creation date
       range, checks that the user may display that sales organization, and shows the result
       in an ALV grid. Include a unit test for any calculation logic.
+
+      Write your explanation to answer.md and each code object to its own file.
     tags:
       scenario: ecc_ehp6_sales_report
       labels: "basic ecc release-aware iaas"
     golden_patch:
       inline: |
+        --- /dev/null
+        +++ b/answer.md
+        @@ -0,0 +1,2 @@
+        +Target assumed: SAP ECC 6.0 EHP6, SAP_BASIS 7.31, Oracle. The Azure hosting does not
+        +change the ABAP, so the program uses classic syntax only (no 7.40 features).
         --- /dev/null
         +++ b/src/zfa_sales_orders_702.prog.abap
         @@ -0,0 +1,133 @@
@@ -175,11 +182,17 @@ stimuli:
       Same requirement on our S/4HANA 2023 on-premise system: a report of sales orders by sales
       organization and creation date, with an authorization check, ALV output, and a unit
       test. Use current ABAP syntax.
+
+      Write your explanation to answer.md and each code object to its own file.
     tags:
       scenario: s4hana_2023_sales_report
       labels: "basic s4hana release-aware"
     golden_patch:
       inline: |
+        --- /dev/null
+        +++ b/answer.md
+        @@ -0,0 +1,1 @@
+        +Target assumed: SAP S/4HANA 2023 (SAP_BASIS 7.58), Standard ABAP, SAP HANA.
         --- /dev/null
         +++ b/src/zfa_sales_orders_750.prog.abap
         @@ -0,0 +1,110 @@
@@ -308,11 +321,18 @@ stimuli:
         SELECT vbeln FROM vbak INTO TABLE lt_vbak WHERE vkorg = p_vkorg AND auart = p_auart.
         SELECT vbeln posnr matnr kwmeng FROM vbap INTO TABLE lt_vbap
           FOR ALL ENTRIES IN lt_vbak WHERE vbeln = lt_vbak-vbeln.
+
+      Write your explanation to answer.md and each code object to its own file.
     tags:
       scenario: fix_for_all_entries
       labels: "sql performance bugfix"
     golden_patch:
       inline: |
+        --- /dev/null
+        +++ b/answer.md
+        @@ -0,0 +1,2 @@
+        +When lt_vbak is empty, FOR ALL ENTRIES drops the WHERE condition and selects every row of
+        +VBAP. Check the driver table first and remove duplicate keys.
         --- /dev/null
         +++ b/src/zfa_order_items.prog.abap
         @@ -0,0 +1,22 @@
@@ -350,11 +370,17 @@ stimuli:
       On ECC 6.0 EHP8 running on Microsoft SQL Server, our report loops over all sales orders
       of a sales organization to add up the net value per customer and currency. Make it
       faster.
+
+      Write your explanation to answer.md and each code object to its own file.
     tags:
       scenario: aggregate_on_anydb
       labels: "sql performance anydb"
     golden_patch:
       inline: |
+        --- /dev/null
+        +++ b/answer.md
+        @@ -0,0 +1,1 @@
+        +Let the database aggregate. This runs on any database; AMDP would need SAP HANA.
         --- /dev/null
         +++ b/src/zfa_sales_by_customer.prog.abap
         @@ -0,0 +1,22 @@

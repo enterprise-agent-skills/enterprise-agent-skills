@@ -22,11 +22,17 @@ stimuli:
       mentions the account name. Block saving an Opportunity as Closed Won when Amount is
       empty. Data loads update thousands of opportunities at once. Write the trigger and
       handler class.
+
+      Write your explanation to answer.md and each code object to its own file.
     tags:
       scenario: bulk_safe_trigger_handler
       labels: "basic bulkification recursion security"
     golden_patch:
       inline: |
+        --- /dev/null
+        +++ b/answer.md
+        @@ -0,0 +1,1 @@
+        +Data access runs in user mode so the running user's object and field permissions apply.
         --- /dev/null
         +++ b/force-app/main/default/triggers/OpportunityTrigger.trigger
         @@ -0,0 +1,3 @@
