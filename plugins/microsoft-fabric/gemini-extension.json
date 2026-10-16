@@ -1,0 +1,10 @@
+{
+  "name": "microsoft-fabric",
+  "version": "0.1.0",
+  "description": "Skills for data engineering in Microsoft Fabric: incremental, idempotent loads into Lakehouse Delta tables from notebooks, with secrets from Azure Key Vault and routine table maintenance. Bundles the read-only Microsoft Learn MCP server for current documentation.",
+  "mcpServers": {
+    "microsoft-learn": {
+      "httpUrl": "https://learn.microsoft.com/api/mcp"
+    }
+  }
+}

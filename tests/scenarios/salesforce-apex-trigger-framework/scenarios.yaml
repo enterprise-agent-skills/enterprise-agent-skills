@@ -1,0 +1,257 @@
+# yaml-language-server: $schema=../../../schemas/skill-scenarios.schema.json
+# Scenarios for salesforce-apex-trigger-framework.
+
+config:
+  model: claude-sonnet-4.6
+  max_tokens: 5000
+  temperature: 0.2
+
+scenarios:
+  - name: bulk_safe_trigger_handler
+    description: Trigger plus handler with bulk-safe queries, recursion guard, and user mode.
+    prompt: |
+      When an Opportunity becomes Closed Won, create a follow-up Task for the owner that
+      mentions the account name. Block saving an Opportunity as Closed Won when Amount is
+      empty. Data loads update thousands of opportunities at once. Write the trigger and
+      handler class.
+    expected_patterns:
+      - 'trigger\s+\w+\s+on\s+Opportunity'
+      - 'switch\s+on\s+Trigger\.operationType'
+      - '\b(with|inherited)\s+sharing\b'
+      - 'Set<Id>'
+      - 'WITH\s+USER_MODE'
+      - 'AccessLevel\.USER_MODE'
+      - 'addError\('
+      - 'oldMap'
+    forbidden_patterns:
+      - 'for\s*\(.*\)\s*\{[^}]*\[\s*SELECT'
+      - 'for\s*\(.*\)\s*\{[^}]*\b(insert|update|delete|upsert)\s+(new\s+)?\w+'
+      - '\bwithout\s+sharing\b'
+      - 'static\s+Boolean\s+\w+\s*=\s*(true|false)\b'
+    tags: [basic, bulkification, recursion, security]
+    validators: [apex]
+    mock_response: |
+      Data access runs in user mode so the running user's object and field permissions apply.
+
+      // file: force-app/main/default/triggers/OpportunityTrigger.trigger
+      trigger OpportunityTrigger on Opportunity (before insert, before update, after insert, after update) {
+          new OpportunityTriggerHandler().run();
+      }
+
+      // file: force-app/main/default/classes/OpportunityTriggerHandler.cls
+      public with sharing class OpportunityTriggerHandler {
+          private static final String CLOSED_WON = 'Closed Won';
+          @TestVisible
+          private static Set<Id> processedIds = new Set<Id>();
+
+          public void run() {
+              switch on Trigger.operationType {
+                  when BEFORE_INSERT, BEFORE_UPDATE {
+                      requireAmountWhenWon((List<Opportunity>) Trigger.new);
+                  }
+                  when AFTER_INSERT, AFTER_UPDATE {
+                      createFollowUpTasks((List<Opportunity>) Trigger.new, (Map<Id, Opportunity>) Trigger.oldMap);
+                  }
+              }
+          }
+
+          private void requireAmountWhenWon(List<Opportunity> records) {
+              for (Opportunity opp : records) {
+                  if (opp.StageName == CLOSED_WON && opp.Amount == null) {
+                      opp.addError(Opportunity.Amount, 'Enter an Amount before setting the stage to Closed Won.');
+                  }
+              }
+          }
+
+          private void createFollowUpTasks(List<Opportunity> records, Map<Id, Opportunity> oldMap) {
+              List<Opportunity> becameWon = new List<Opportunity>();
+              Set<Id> accountIds = new Set<Id>();
+              for (Opportunity opp : records) {
+                  Boolean wasWon = oldMap != null && oldMap.get(opp.Id).StageName == CLOSED_WON;
+                  if (opp.StageName == CLOSED_WON && !wasWon && !processedIds.contains(opp.Id)) {
+                      becameWon.add(opp);
+                      processedIds.add(opp.Id);
+                      accountIds.add(opp.AccountId);
+                  }
+              }
+              if (becameWon.isEmpty()) {
+                  return;
+              }
+              Map<Id, Account> accounts = new Map<Id, Account>(
+                  [SELECT Id, Name FROM Account WHERE Id IN :accountIds WITH USER_MODE]
+              );
+              List<Task> tasks = new List<Task>();
+              for (Opportunity opp : becameWon) {
+                  Account acc = accounts.get(opp.AccountId);
+                  tasks.add(new Task(
+                      WhatId = opp.Id,
+                      OwnerId = opp.OwnerId,
+                      Subject = 'Kick-off call' + (acc == null ? '' : ' with ' + acc.Name),
+                      ActivityDate = Date.today().addDays(3)
+                  ));
+              }
+              Database.insert(tasks, AccessLevel.USER_MODE);
+          }
+      }
+    negative_responses:
+      - name: soql_in_loop
+        reason: One query per record exceeds the 100-query governor limit on large updates.
+        caught_by: forbidden_pattern
+        response: |
+          // file: force-app/main/default/classes/OpportunityTriggerHandler.cls
+          public with sharing class OpportunityTriggerHandler {
+              private static Set<Id> processedIds = new Set<Id>();
+              public void run() {
+                  switch on Trigger.operationType {
+                      when AFTER_UPDATE {
+                          Map<Id, Opportunity> oldMap = (Map<Id, Opportunity>) Trigger.oldMap;
+                          for (Opportunity opp : (List<Opportunity>) Trigger.new) {
+                              Account acc = [SELECT Name FROM Account WHERE Id = :opp.AccountId WITH USER_MODE];
+                              opp.addError('x');
+                          }
+                          Database.insert(new List<Task>(), AccessLevel.USER_MODE);
+                      }
+                  }
+              }
+          }
+      - name: static_boolean_guard
+        reason: A static Boolean skips every chunk after the first 200 records.
+        caught_by: forbidden_pattern
+        response: |
+          // file: force-app/main/default/classes/OpportunityTriggerHandler.cls
+          public with sharing class OpportunityTriggerHandler {
+              private static Boolean alreadyRan = false;
+              private static Set<Id> ids = new Set<Id>();
+              public void run() {
+                  if (alreadyRan) { return; }
+                  alreadyRan = true;
+                  switch on Trigger.operationType {
+                      when AFTER_UPDATE {
+                          Map<Id, Opportunity> oldMap = (Map<Id, Opportunity>) Trigger.oldMap;
+                          List<Account> accs = [SELECT Id FROM Account WITH USER_MODE LIMIT 1];
+                          Database.insert(new List<Task>(), AccessLevel.USER_MODE);
+                      }
+                  }
+              }
+              public void validate(Opportunity opp) { opp.addError('x'); }
+          }
+      - name: apex_syntax_error
+        reason: Code that does not compile cannot be deployed; the parser must reject it.
+        caught_by: validator
+        response: |
+          // file: force-app/main/default/triggers/OpportunityTrigger.trigger
+          trigger OpportunityTrigger on Opportunity (after update) {
+              new OpportunityTriggerHandler().run()
+          }
+
+          // file: force-app/main/default/classes/OpportunityTriggerHandler.cls
+          public with sharing class OpportunityTriggerHandler {
+              private static Set<Id> processedIds = new Set<Id>();
+              public void run() {
+                  switch on Trigger.operationType {
+                      when AFTER_UPDATE {
+                          Map<Id, Opportunity> oldMap = (Map<Id, Opportunity>) Trigger.oldMap;
+                          List<Account> accs = [SELECT Id FROM Account WITH USER_MODE];
+                          Database.insert(new List<Task>(), AccessLevel.USER_MODE);
+                      }
+                  }
+              }
+              public void validate(Opportunity opp) { opp.addError('x'); }
+          }
+
+  - name: trigger_unit_tests
+    description: Test class with bulk data, setup method, and meaningful assertions.
+    prompt: |
+      Write the Apex test class for OpportunityTriggerHandler. It must prove the handler works
+      for a full batch of records and that saving Closed Won without an Amount fails.
+    expected_patterns:
+      - '@[Ii]s[Tt]est'
+      - '@[Tt]est[Ss]etup'
+      - 'Test\.startTest\(\)'
+      - 'Test\.stopTest\(\)'
+      - '\b200\b'
+      - 'Assert\.(areEqual|isFalse|isTrue)\('
+      - 'Database\.update\([^)]*,\s*false\)'
+    forbidden_patterns:
+      - 'SeeAllData\s*=\s*true'
+      - 'System\.assert\(\s*true\s*\)'
+    tags: [testing, bulkification]
+    validators: [apex]
+    mock_response: |
+      // file: force-app/main/default/classes/OpportunityTriggerHandlerTest.cls
+      @IsTest
+      private class OpportunityTriggerHandlerTest {
+          @TestSetup
+          static void createData() {
+              Account acc = new Account(Name = 'Contoso');
+              insert acc;
+              List<Opportunity> opps = new List<Opportunity>();
+              for (Integer i = 0; i < 200; i++) {
+                  opps.add(new Opportunity(Name = 'Deal ' + i, AccountId = acc.Id,
+                      StageName = 'Prospecting', CloseDate = Date.today().addDays(30), Amount = 1000));
+              }
+              insert opps;
+          }
+
+          @IsTest
+          static void createsOneTaskPerOpportunityInABulkUpdate() {
+              List<Opportunity> opps = [SELECT Id FROM Opportunity];
+              for (Opportunity opp : opps) {
+                  opp.StageName = 'Closed Won';
+              }
+              Test.startTest();
+              update opps;
+              Test.stopTest();
+              Integer taskCount = [SELECT COUNT() FROM Task WHERE WhatId IN :opps];
+              Assert.areEqual(200, taskCount, 'Expected one follow-up task per won opportunity.');
+          }
+
+          @IsTest
+          static void blocksClosedWonWithoutAmount() {
+              Opportunity opp = [SELECT Id FROM Opportunity LIMIT 1];
+              opp.StageName = 'Closed Won';
+              opp.Amount = null;
+              Test.startTest();
+              Database.SaveResult result = Database.update(opp, false);
+              Test.stopTest();
+              Assert.isFalse(result.isSuccess(), 'The update should fail without an Amount.');
+          }
+      }
+    negative_responses:
+      - name: see_all_data
+        reason: Tests that read org data are not repeatable and fail in clean scratch orgs.
+        caught_by: forbidden_pattern
+        response: |
+          // file: force-app/main/default/classes/OpportunityTriggerHandlerTest.cls
+          @IsTest(SeeAllData=true)
+          private class OpportunityTriggerHandlerTest {
+              @TestSetup
+              static void createData() { }
+              @IsTest
+              static void runs() {
+                  List<Opportunity> opps = [SELECT Id FROM Opportunity LIMIT 200];
+                  Test.startTest();
+                  Database.update(opps, false);
+                  Test.stopTest();
+                  Assert.isTrue(true, 'ran');
+              }
+          }
+      - name: no_real_assertion
+        reason: System.assert(true) passes regardless of behavior.
+        caught_by: forbidden_pattern
+        response: |
+          // file: force-app/main/default/classes/OpportunityTriggerHandlerTest.cls
+          @IsTest
+          private class OpportunityTriggerHandlerTest {
+              @TestSetup
+              static void createData() { }
+              @IsTest
+              static void runs() {
+                  List<Opportunity> opps = new List<Opportunity>();
+                  Test.startTest();
+                  Database.update(opps, false);
+                  Test.stopTest();
+                  System.assert(true);
+                  Integer expected = 200;
+              }
+          }

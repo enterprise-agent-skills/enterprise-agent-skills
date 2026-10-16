@@ -1,0 +1,17 @@
+node_modules/
+reports/
+vally-live/
+.vally-work/
+*.log
+.DS_Store
+Thumbs.db
+desktop.ini
+__pycache__/
+*.pyc
+
+# Local tool state
+.sc4sap/
+
+# Local reference copy of a third-party plugin package (Anthropic design plugin sample).
+# It is not part of this repository.
+design.plugin

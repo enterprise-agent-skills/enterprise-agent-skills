@@ -1,0 +1,58 @@
+name: Skill proposal
+description: Propose a new skill or a new plugin before writing it.
+title: "Skill proposal: <product> - <task>"
+labels: ["skill-proposal", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Agree on scope before writing. A maintainer for the vendor area will confirm the target plugin and check for overlap with existing skills.
+  - type: dropdown
+    id: vendor
+    attributes:
+      label: Vendor
+      options: [SAP, Microsoft, Salesforce, Amazon Web Services, Google Cloud, ServiceNow, Workday, Snowflake, Databricks, Oracle, Vendor-neutral, Other]
+    validations:
+      required: true
+  - type: input
+    id: product
+    attributes:
+      label: Product and version range
+      placeholder: "SAP S/4HANA 2023 and later, ABAP Cloud"
+    validations:
+      required: true
+  - type: textarea
+    id: task
+    attributes:
+      label: Task the skill handles
+      description: What does a developer ask for, and what should the agent produce?
+    validations:
+      required: true
+  - type: textarea
+    id: mistakes
+    attributes:
+      label: Mistakes agents make today
+      description: Concrete wrong outputs you have seen. These become negative test scenarios.
+    validations:
+      required: true
+  - type: textarea
+    id: sources
+    attributes:
+      label: Official documentation you will rely on
+      description: Links to vendor documentation or specifications.
+    validations:
+      required: true
+  - type: dropdown
+    id: upstream
+    attributes:
+      label: Could this belong in microsoft/skills?
+      options: ["No", "Maybe - Microsoft-specific", "Not sure"]
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Confirmation
+      options:
+        - label: I will write acceptance criteria and scenarios with negative responses.
+          required: true
+        - label: Any material I adapt has a license that allows it, and I will credit it.
+          required: true

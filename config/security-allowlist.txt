@@ -1,0 +1,9 @@
+# File-level suppressions for scripts/security-scan.mjs.
+# Format: <path or folder/**> <RULE_ID> <reason>
+# Prefer inline suppression (`security-scan: allow RULE_ID reason`) so the reason sits next
+# to the code. Every entry here needs a reviewer from CODEOWNERS for /config/.
+
+# The scanner's own rule definitions describe the patterns they detect.
+scripts/lib/security-rules.mjs PROMPT_INJECTION_PHRASE rule definitions
+scripts/lib/security-rules.mjs DANGER_TLS_VERIFICATION_DISABLED rule definitions
+scripts/lib/security-rules.mjs SECRET_HARDCODED_ASSIGNMENT rule definitions

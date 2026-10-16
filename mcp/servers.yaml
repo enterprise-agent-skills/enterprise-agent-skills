@@ -1,0 +1,108 @@
+# Curated MCP servers that skills in this repository may reference.
+#
+# Rules (enforced by npm run validate):
+# - Only vendor-published servers are listed. Community servers can be proposed in an issue.
+# - bundle_policy "bundle" is allowed only for official servers that need no credentials.
+#   Everything else is "document-only": plugins describe it, users install it themselves.
+# - Package versions are pinned. Update them deliberately and re-verify.
+# - last_verified is the date someone confirmed the source, license, and launch command.
+
+servers:
+  - id: microsoft-learn
+    name: Microsoft Learn MCP Server
+    vendor: microsoft
+    publisher: Microsoft
+    official: true
+    source: https://github.com/MicrosoftDocs/mcp
+    license: CC-BY-4.0 (repository content); hosted service terms apply
+    description: Read-only search and fetch over official Microsoft documentation, including Microsoft Fabric and Power BI.
+    transport: streamable-http
+    url: https://learn.microsoft.com/api/mcp
+    auth: none
+    read_only_by_default: true
+    bundle_policy: bundle
+    last_verified: "2026-10-14"
+
+  - id: microsoft-fabric
+    name: Microsoft Fabric MCP Server
+    vendor: microsoft
+    publisher: Microsoft
+    official: true
+    source: https://github.com/microsoft/mcp/tree/main/servers/Fabric.Mcp.Server
+    license: MIT
+    description: Fabric API reference, item definitions, and workspace operations through the Fabric REST APIs.
+    transport: stdio
+    command: npx
+    args: ["-y", "@microsoft/fabric-mcp@1.5.0", "server", "start", "--mode", "all"]
+    auth: user-login
+    read_only_by_default: false
+    bundle_policy: document-only
+    requirements: Node.js 22 or later. Workspace operations need a Microsoft Entra sign-in with Fabric permissions.
+    last_verified: "2026-10-14"
+
+  - id: sap-ui5
+    name: UI5 MCP Server
+    vendor: sap
+    publisher: SAP (UI5 team)
+    official: true
+    source: https://github.com/UI5/mcp-server
+    license: Apache-2.0
+    description: UI5 API reference, project scaffolding guidance, and UI5 linter integration.
+    transport: stdio
+    command: npx
+    args: ["-y", "@ui5/mcp-server@0.3.2"]
+    auth: none
+    read_only_by_default: true
+    bundle_policy: bundle
+    last_verified: "2026-10-14"
+
+  - id: sap-cap
+    name: CAP MCP Server
+    vendor: sap
+    publisher: SAP (CAP team)
+    official: true
+    source: https://github.com/cap-js/mcp-server
+    license: Apache-2.0
+    description: Search over the compiled CDS model of a CAP project and over CAP documentation.
+    transport: stdio
+    command: npx
+    args: ["-y", "@cap-js/mcp-server@0.0.6"]
+    auth: none
+    read_only_by_default: true
+    bundle_policy: bundle
+    requirements: Run inside a CAP project folder.
+    last_verified: "2026-10-14"
+
+  - id: sap-fiori
+    name: SAP Fiori MCP Server
+    vendor: sap
+    publisher: SAP (open-ux-tools)
+    official: true
+    source: https://github.com/SAP/open-ux-tools/tree/main/packages/fiori-mcp-server
+    license: Apache-2.0
+    description: Generate and modify SAP Fiori elements applications with Fiori tools.
+    transport: stdio
+    command: npx
+    args: ["--yes", "@sap-ux/fiori-mcp-server@1.15.6", "fiori-mcp"]
+    auth: none
+    read_only_by_default: false
+    bundle_policy: document-only
+    requirements: Changes project files. Use in a Git-tracked workspace.
+    last_verified: "2026-10-14"
+
+  - id: salesforce-dx
+    name: Salesforce DX MCP Server
+    vendor: salesforce
+    publisher: Salesforce
+    official: true
+    source: https://github.com/salesforcecli/mcp
+    license: Apache-2.0
+    description: Org, metadata, data, and Apex test operations through the Salesforce CLI.
+    transport: stdio
+    command: npx
+    args: ["-y", "@salesforce/mcp@0.30.15", "--orgs", "DEFAULT_TARGET_ORG", "--toolsets", "orgs,metadata,data,users"]
+    auth: user-login
+    read_only_by_default: false
+    bundle_policy: document-only
+    requirements: Salesforce CLI with an authorized org (sf org login web). Use a scratch org or sandbox.
+    last_verified: "2026-10-14"

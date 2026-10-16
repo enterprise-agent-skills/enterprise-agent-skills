@@ -1,0 +1,185 @@
+# yaml-language-server: $schema=../../../schemas/skill-scenarios.schema.json
+# Scenarios for fabric-lakehouse-incremental-merge. API usage follows Microsoft Learn
+# documentation for Fabric Data Engineering (checked 2026-10-14).
+
+config:
+  model: claude-sonnet-4.6
+  max_tokens: 4000
+  temperature: 0.2
+
+scenarios:
+  - name: incremental_upsert_notebook
+    description: Watermark-based incremental load with de-duplication and MERGE.
+    prompt: |
+      Write a Fabric notebook in PySpark that loads changed customer rows from Parquet files
+      in Files/landing/customers/ into the Lakehouse table silver.customers. The key is
+      customer_id and modified_at tells which version is newest. It runs every hour and must
+      be safe to re-run after a failure.
+    expected_patterns:
+      - 'DeltaTable\.forName\('
+      - '\.merge\('
+      - 'whenMatchedUpdateAll\(condition='
+      - 'whenNotMatchedInsertAll\(\)'
+      - 'row_number\(\)'
+      - 'Window\.partitionBy\('
+      - "watermark"
+    forbidden_patterns:
+      - 'mode\(\s*["'']overwrite["'']\s*\)'
+      - 'dropDuplicates\('
+      - '\.toPandas\(\)'
+      - '\.collect\(\)'
+    tags: [basic, merge, incremental]
+    validators: [python]
+    mock_response: |
+      # file: notebooks/load_customers_incremental.py
+      # Parameters cell
+      source_path = "Files/landing/customers/"
+      target_table = "silver.customers"
+      watermark_table = "control.watermarks"
+      key_columns = ["customer_id"]
+      change_column = "modified_at"
+
+      from delta.tables import DeltaTable
+      from pyspark.sql import functions as F
+      from pyspark.sql.window import Window
+
+      def read_watermark():
+          if not spark.catalog.tableExists(watermark_table):
+              return None
+          row = (spark.read.table(watermark_table)
+                 .where(F.col("source") == target_table)
+                 .agg(F.max("high_watermark").alias("wm"))
+                 .first())
+          return row["wm"] if row else None
+
+      incoming = spark.read.format("parquet").load(source_path)
+      last_watermark = read_watermark()
+      if last_watermark is not None:
+          incoming = incoming.where(F.col(change_column) > F.lit(last_watermark))
+
+      latest_first = Window.partitionBy(*key_columns).orderBy(F.col(change_column).desc())
+      batch = (incoming.withColumn("_rn", F.row_number().over(latest_first))
+               .where(F.col("_rn") == 1)
+               .drop("_rn"))
+
+      new_watermark = batch.agg(F.max(change_column).alias("wm")).first()["wm"]
+      if new_watermark is not None:
+          if spark.catalog.tableExists(target_table):
+              condition = " AND ".join(f"t.{c} = s.{c}" for c in key_columns)
+              (DeltaTable.forName(spark, target_table).alias("t")
+                  .merge(batch.alias("s"), condition)
+                  .whenMatchedUpdateAll(condition=f"s.{change_column} > t.{change_column}")
+                  .whenNotMatchedInsertAll()
+                  .execute())
+          else:
+              batch.write.format("delta").saveAsTable(target_table)
+
+          # Advance the watermark only after the merge succeeded.
+          (spark.createDataFrame([(target_table, new_watermark)], "source string, high_watermark timestamp")
+              .write.format("delta").mode("append").saveAsTable(watermark_table))
+    negative_responses:
+      - name: full_overwrite
+        reason: Rewriting the whole table each hour loses history, is slow, and is not incremental.
+        caught_by: forbidden_pattern
+        response: |
+          # file: notebooks/load_customers.py
+          df = spark.read.format("parquet").load("Files/landing/customers/")
+          df.write.format("delta").mode("overwrite").saveAsTable("silver.customers")
+      - name: drop_duplicates_without_ordering
+        reason: dropDuplicates keeps an arbitrary row, and the merge can apply an older version.
+        caught_by: forbidden_pattern
+        response: |
+          # file: notebooks/load_customers.py
+          from delta.tables import DeltaTable
+          from pyspark.sql.window import Window
+          watermark = None
+          batch = spark.read.format("parquet").load("Files/landing/customers/").dropDuplicates(["customer_id"])
+          (DeltaTable.forName(spark, "silver.customers").alias("t")
+              .merge(batch.alias("s"), "t.customer_id = s.customer_id")
+              .whenMatchedUpdateAll(condition="s.modified_at > t.modified_at")
+              .whenNotMatchedInsertAll()
+              .execute())
+
+  - name: key_vault_credentials
+    description: Database source with credentials from Azure Key Vault.
+    prompt: |
+      In a Fabric notebook, read the dbo.customers table from our Azure SQL database
+      contoso-sql.database.windows.net (database crm) with Spark. The SQL user and password
+      are stored in the Key Vault contoso-data-kv. Show the code.
+    expected_patterns:
+      - 'notebookutils\.credentials\.getSecret\('
+      - 'https://[\w-]+\.vault\.azure\.net'
+      - 'format\(["'']jdbc["'']\)'
+    forbidden_patterns:
+      - '(?:password|pwd)\s*=\s*["''][^"''<{\s]{4,}["'']'
+      - 'print\(\s*\w*password'
+    tags: [security, credentials, jdbc]
+    validators: [python]
+    mock_response: |
+      # file: notebooks/read_crm_customers.py
+      vault_url = "https://contoso-data-kv.vault.azure.net/"
+      jdbc_url = "jdbc:sqlserver://contoso-sql.database.windows.net:1433;database=crm;encrypt=true"
+
+      db_user = notebookutils.credentials.getSecret(vault_url, "crm-sql-user")
+      db_password = notebookutils.credentials.getSecret(vault_url, "crm-sql-password")
+
+      customers = (
+          spark.read.format("jdbc")
+          .option("url", jdbc_url)
+          .option("dbtable", "dbo.customers")
+          .option("user", db_user)
+          .option("password", db_password)
+          .load()
+      )
+    negative_responses:
+      - name: hardcoded_password
+        reason: A password in notebook code is visible to every workspace member and in Git history.
+        caught_by: forbidden_pattern
+        response: |
+          # file: notebooks/read_crm_customers.py
+          jdbc_url = "jdbc:sqlserver://contoso-sql.database.windows.net:1433;database=crm"
+          db_password = "Winter2026!"  # security-scan: allow SECRET_HARDCODED_ASSIGNMENT intentional bad example
+          customers = (spark.read.format("jdbc").option("url", jdbc_url)
+                       .option("user", "etl_user").option("password", db_password).load())
+
+  - name: safe_table_maintenance
+    description: Compaction, V-Order, and VACUUM with safe retention.
+    prompt: |
+      Our silver.customers table gets small files from hourly merges and is used by a
+      Direct Lake semantic model. Give me notebook code for weekly maintenance that also
+      cleans up old files.
+    expected_patterns:
+      - "OPTIMIZE"
+      - 'vacuum\(168\)|RETAIN 168 HOURS'
+      - 'delta\.parquet\.vorder\.enabled|VORDER'
+    forbidden_patterns:
+      - 'RETAIN\s+0\s+HOURS'
+      - 'retentionDurationCheck\.enabled["'']?\s*,\s*["'']false'
+      - 'spark\.sql\.parquet\.vorder\.enabled?["'']'
+    tags: [maintenance, optimize, vacuum]
+    validators: [python]
+    mock_response: |
+      # file: notebooks/maintain_customers.py
+      from delta.tables import DeltaTable
+
+      table_name = "silver.customers"
+
+      # Read-heavy table used by Direct Lake: keep future writes V-Ordered.
+      spark.sql(f'ALTER TABLE {table_name} SET TBLPROPERTIES ("delta.parquet.vorder.enabled" = "true")')
+
+      # Compact small files and apply V-Order to the rewritten files.
+      spark.sql(f"OPTIMIZE {table_name} VORDER")
+
+      # Remove unreferenced files older than the default 7-day retention.
+      DeltaTable.forName(spark, table_name).vacuum(168)
+
+      display(spark.sql(f"DESCRIBE HISTORY {table_name} LIMIT 5"))
+    negative_responses:
+      - name: zero_retention_vacuum
+        reason: Zero retention breaks time travel and can corrupt reads that are still running.
+        caught_by: forbidden_pattern
+        response: |
+          # file: notebooks/maintain_customers.py
+          spark.sql("OPTIMIZE silver.customers VORDER")
+          spark.conf.set("spark.databricks.delta.retentionDurationCheck.enabled", "false")
+          spark.sql("VACUUM silver.customers RETAIN 0 HOURS")

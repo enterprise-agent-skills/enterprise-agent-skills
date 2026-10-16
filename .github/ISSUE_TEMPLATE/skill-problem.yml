@@ -1,0 +1,40 @@
+name: Skill problem
+description: A skill gives wrong, outdated, or unsafe guidance, or does not trigger when it should.
+title: "Skill problem: <skill-name>"
+labels: ["skill-problem", "needs-triage"]
+body:
+  - type: input
+    id: skill
+    attributes:
+      label: Skill name
+      placeholder: sap-rap-business-object
+    validations:
+      required: true
+  - type: input
+    id: agent
+    attributes:
+      label: Agent, version, and model
+      placeholder: "Claude Code 2.x with ..., GitHub Copilot CLI 1.x with ..."
+    validations:
+      required: true
+  - type: textarea
+    id: prompt
+    attributes:
+      label: Prompt you used
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What the agent did
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Correct behavior, with a link to official documentation
+    validations:
+      required: true
+  - type: markdown
+    attributes:
+      value: For security problems, do not use this form. Follow SECURITY.md instead.

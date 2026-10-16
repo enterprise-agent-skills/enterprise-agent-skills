@@ -1,0 +1,343 @@
+# SAP environment registry used by release-aware ABAP validation.
+# Schema: schemas/sap-environments.schema.json. Documentation: docs/sap-environments.md.
+#
+# Two dimensions are kept apart on purpose:
+#   - deployment: where SAP runs (on premises, IaaS VMs on Azure, AWS, or Google Cloud, or
+#     SAP-managed). It never changes which ABAP is valid.
+#   - product, SAP_BASIS release and support package, language version, and database: these
+#     decide the abaplint grammar and the feature rules below.
+
+deployments:
+  - id: on-premise
+    name: On premises (customer data center)
+  - id: azure-iaas
+    name: Microsoft Azure virtual machines (customer-managed)
+  - id: aws-iaas
+    name: AWS EC2 (customer-managed)
+  - id: gcp-iaas
+    name: Google Compute Engine (customer-managed)
+  - id: sap-private-cloud
+    name: SAP-managed private cloud (RISE with SAP; S/4HANA Cloud Private Edition or SAP ERP private edition)
+  - id: sap-saas
+    name: SAP-managed public cloud (S/4HANA Cloud Public Edition, SAP BTP ABAP environment)
+
+databases:
+  - id: hana
+    name: SAP HANA
+  - id: anydb
+    name: Other database (Oracle, IBM Db2, Microsoft SQL Server, SAP ASE, SAP MaxDB)
+
+products:
+  - id: ecc
+    name: SAP ECC 6.0
+    notes: >-
+      The enhancement package fixes the SAP NetWeaver release; the platform cannot be upgraded on
+      its own. Check System > Status: SAP_APPL 604 to 618 shows the EHP (third digit), SAP_BASIS
+      shows the ABAP release and support package. ECC on SAP HANA (Suite on HANA) needs SAP_BASIS
+      7.40 or later.
+    databases: [anydb, hana]
+    hana_from_sap_basis: "7.40"
+    language_versions: [standard]
+    deployments: [on-premise, azure-iaas, aws-iaas, gcp-iaas, sap-private-cloud]
+    releases:
+      - { id: ehp0, name: ECC 6.0, sap_basis: "7.00" }
+      - { id: ehp1, name: ECC 6.0 EHP1, sap_basis: "7.00" }
+      - { id: ehp2, name: ECC 6.0 EHP2, sap_basis: "7.00" }
+      - { id: ehp3, name: ECC 6.0 EHP3, sap_basis: "7.00" }
+      - { id: ehp4, name: ECC 6.0 EHP4, sap_basis: "7.01" }
+      - { id: ehp5, name: ECC 6.0 EHP5, sap_basis: "7.02" }
+      - { id: ehp6, name: ECC 6.0 EHP6, sap_basis: "7.31", notes: "Runs on SAP NetWeaver 7.0 EHP3 (7.03), which was renamed 7.3 EHP1; both are SAP_BASIS 731." }
+      - { id: ehp6-hana, name: ECC 6.0 EHP6 for SAP HANA, sap_basis: "7.40", notes: "SAP_APPL 616; outside the regular EHP sequence." }
+      - { id: ehp7, name: ECC 6.0 EHP7, sap_basis: "7.40" }
+      - { id: ehp8, name: ECC 6.0 EHP8, sap_basis: "7.50", notes: "Last enhancement package; Unicode only." }
+
+  - id: netweaver
+    name: SAP NetWeaver AS ABAP
+    notes: >-
+      Standalone application server releases, for example for custom applications or SAP Business
+      Suite components other than ECC. AS ABAP 7.51 and 7.52 also shipped standalone; from 7.53 the
+      ABAP platform ships only with S/4HANA.
+    databases: [anydb, hana]
+    language_versions: [standard]
+    deployments: [on-premise, azure-iaas, aws-iaas, gcp-iaas]
+    releases:
+      - { id: "700", name: NetWeaver 7.0, sap_basis: "7.00" }
+      - { id: "701", name: NetWeaver 7.0 EHP1, sap_basis: "7.01" }
+      - { id: "702", name: NetWeaver 7.0 EHP2, sap_basis: "7.02" }
+      - { id: "703", name: NetWeaver 7.0 EHP3, sap_basis: "7.31", notes: "Renamed 7.3 EHP1; SAP_BASIS 731." }
+      - { id: "730", name: NetWeaver 7.3, sap_basis: "7.30", notes: "Separate 7.1/7.2/7.3 release track; 7.31 is not its successor." }
+      - { id: "731", name: NetWeaver 7.3 EHP1, sap_basis: "7.31" }
+      - { id: "740", name: NetWeaver 7.4, sap_basis: "7.40" }
+      - { id: "750", name: NetWeaver 7.5, sap_basis: "7.50" }
+      - { id: "751", name: AS ABAP 7.51 innovation package, sap_basis: "7.51" }
+      - { id: "752", name: AS ABAP 7.52, sap_basis: "7.52" }
+
+  - id: s4hana
+    name: SAP S/4HANA (on-premise)
+    notes: Customer-managed, on premises or on IaaS. Standard ABAP and, from 2022, ABAP for Cloud Development.
+    databases: [hana]
+    language_versions: [standard, cloud]
+    cloud_language_from_sap_basis: "7.57"
+    deployments: [on-premise, azure-iaas, aws-iaas, gcp-iaas]
+    releases:
+      - { id: "1511", name: S/4HANA 1511, sap_basis: "7.50" }
+      - { id: "1610", name: S/4HANA 1610, sap_basis: "7.51" }
+      - { id: "1709", name: S/4HANA 1709, sap_basis: "7.52" }
+      - { id: "1809", name: S/4HANA 1809, sap_basis: "7.53" }
+      - { id: "1909", name: S/4HANA 1909, sap_basis: "7.54" }
+      - { id: "2020", name: S/4HANA 2020, sap_basis: "7.55" }
+      - { id: "2021", name: S/4HANA 2021, sap_basis: "7.56" }
+      - { id: "2022", name: S/4HANA 2022, sap_basis: "7.57" }
+      - { id: "2023", name: S/4HANA 2023, sap_basis: "7.58" }
+      - { id: "2025", name: S/4HANA 2025, sap_basis: "8.16", notes: "ABAP release 8.16 is the successor of 7.58; there is no S/4HANA 2024 and no ABAP 7.59." }
+
+  - id: s4hana-private-cloud
+    name: SAP S/4HANA Cloud Private Edition
+    notes: >-
+      Same ABAP platform release as the on-premise release of the same year, operated by SAP (RISE
+      with SAP; newer SAP material also says SAP Cloud ERP Private). Classic ABAP is allowed; SAP
+      recommends ABAP Cloud for new extensions.
+    databases: [hana]
+    language_versions: [standard, cloud]
+    cloud_language_from_sap_basis: "7.57"
+    deployments: [sap-private-cloud]
+    releases:
+      - { id: "2020", name: Private Edition 2020, sap_basis: "7.55" }
+      - { id: "2021", name: Private Edition 2021, sap_basis: "7.56" }
+      - { id: "2022", name: Private Edition 2022, sap_basis: "7.57" }
+      - { id: "2023", name: Private Edition 2023, sap_basis: "7.58" }
+      - { id: "2025", name: Private Edition 2025, sap_basis: "8.16" }
+
+  - id: s4hana-public-cloud
+    name: SAP S/4HANA Cloud Public Edition
+    databases: [hana]
+    language_versions: [cloud]
+    deployments: [sap-saas]
+    releases:
+      - { id: current, name: current release, sap_basis: cloud }
+
+  - id: btp-abap
+    name: SAP BTP ABAP environment
+    databases: [hana]
+    language_versions: [cloud]
+    deployments: [sap-saas]
+    releases:
+      - { id: current, name: current release, sap_basis: cloud }
+
+# abaplint grammars: v700, v702, v740sp02, v740sp05, v740sp08, v750 ... v758, v816, Cloud.
+# There is no grammar for 7.01, 7.30, 7.31, or 7.40 below SP02; those map DOWN to the nearest
+# older grammar so code needing a newer release is never accepted. SAP's release news confirm
+# the mapping: 7.01 has no ABAP changes over 7.00, and 7.31 (also sold as 7.03) has hardly any
+# over 7.02. NetWeaver 7.0 EHP3 is SAP_BASIS 7.31, so there is no 7.03 entry.
+grammar_by_sap_basis:
+  - { sap_basis: "7.00", grammar: v700 }
+  - { sap_basis: "7.01", grammar: v700, note: mapped down }
+  - { sap_basis: "7.02", grammar: v702 }
+  - { sap_basis: "7.30", grammar: v702, note: mapped down }
+  - { sap_basis: "7.31", grammar: v702, note: mapped down }
+  - { sap_basis: "7.40", min_support_package: 0, grammar: v702, note: SP00 and SP01 mapped down }
+  - { sap_basis: "7.40", min_support_package: 2, grammar: v740sp02 }
+  - { sap_basis: "7.40", min_support_package: 5, grammar: v740sp05 }
+  - { sap_basis: "7.40", min_support_package: 8, grammar: v740sp08 }
+  - { sap_basis: "7.50", grammar: v750 }
+  - { sap_basis: "7.51", grammar: v751 }
+  - { sap_basis: "7.52", grammar: v752 }
+  - { sap_basis: "7.53", grammar: v753 }
+  - { sap_basis: "7.54", grammar: v754 }
+  - { sap_basis: "7.55", grammar: v755 }
+  - { sap_basis: "7.56", grammar: v756 }
+  - { sap_basis: "7.57", grammar: v757 }
+  - { sap_basis: "7.58", grammar: v758 }
+  - { sap_basis: "8.16", grammar: v816 }
+
+# Release and database requirements that the abaplint grammar does not enforce.
+feature_rules:
+  - id: cds-ddic-based-view
+    description: DDIC-based CDS views (define view with an SQL view name)
+    extensions: [.asddls]
+    pattern: '^\s*define\s+view\s+(?!entity\b)'
+    min_sap_basis: "7.40"
+    min_support_package: 5
+    source: ABAP Keyword Documentation, release news 7.40 SP05 (ABAP CDS)
+  - id: cds-view-entity
+    description: CDS view entities (define view entity)
+    extensions: [.asddls]
+    pattern: '\bdefine\s+(root\s+)?view\s+entity\b'
+    min_sap_basis: "7.55"
+    source: ABAP Keyword Documentation, release news 7.55 (CDS view entities)
+  - id: amdp
+    description: ABAP Managed Database Procedures (AMDP)
+    extensions: [.abap]
+    pattern: 'BY\s+DATABASE\s+(PROCEDURE|FUNCTION)\s+FOR\s+HDB'
+    min_sap_basis: "7.40"
+    min_support_package: 5
+    requires_database: hana
+    source: ABAP Keyword Documentation, release news 7.40 SP05 (AMDP); AMDP runs on SAP HANA only
+  - id: cds-table-function
+    description: CDS table functions (define table function), implemented with AMDP
+    extensions: [.asddls]
+    pattern: '\bdefine\s+table\s+function\b'
+    min_sap_basis: "7.50"
+    requires_database: hana
+    source: ABAP Keyword Documentation, ABAP CDS in Release 7.50 (CDS table functions need a database that supports AMDP)
+
+  # RAP behavior definitions. SAP made RAP generally available on premises with S/4HANA 1909
+  # (queries and unmanaged business objects) and the managed scenario with draft with 2020.
+  - id: rap-unmanaged
+    description: RAP unmanaged business object (behavior definition)
+    extensions: [.asbdef]
+    pattern: '^\s*unmanaged\s+implementation\b'
+    min_sap_basis: "7.54"
+    source: ABAP Platform for SAP S/4HANA 1909 (RAP generally available for queries and unmanaged scenarios)
+  - id: rap-managed
+    description: RAP managed business object (behavior definition)
+    extensions: [.asbdef]
+    pattern: '^\s*managed\b'
+    min_sap_basis: "7.55"
+    source: ABAP Platform for SAP S/4HANA 2020 (managed scenario with draft support)
+  - id: rap-draft
+    description: RAP draft handling (with draft)
+    extensions: [.asbdef]
+    pattern: '\bwith\s+draft\b'
+    min_sap_basis: "7.55"
+    source: ABAP Keyword Documentation, RAP BDL in Release 7.55 (with draft)
+  - id: bdef-strict
+    description: Behavior definition strict mode (strict;)
+    extensions: [.asbdef]
+    pattern: '^\s*strict\s*;'
+    min_sap_basis: "7.56"
+    source: ABAP Keyword Documentation, RAP BDL in Release 7.56 (strict mode)
+  - id: bdef-strict-2
+    description: Behavior definition strict mode version 2 (strict ( 2 );)
+    extensions: [.asbdef]
+    pattern: '^\s*strict\s*\(\s*2\s*\)\s*;'
+    min_sap_basis: "7.57"
+    source: ABAP Keyword Documentation, RAP BDL in Release 7.57 (strict mode version 2)
+
+  # Statements that abaplint's grammar accepts on releases older than SAP supports them. Each
+  # rule is exercised by config/abap-language-features.yaml through
+  # tests/unit/abap-release-features.test.mjs. Patterns run on code with comments and literal
+  # contents removed.
+  - id: abap-unit-test-properties
+    description: RISK LEVEL and DURATION additions of CLASS ... FOR TESTING
+    extensions: [.abap]
+    pattern: '\bFOR\s+TESTING\s+(RISK\s+LEVEL|DURATION)\b'
+    min_sap_basis: "7.02"
+    source: ABAP Keyword Documentation, Tools in Release 7.0 EhP2 (ABAP Unit; 7.0 uses "#AU pseudo comments)
+  - id: abap-unit-assert-class
+    description: Class CL_ABAP_UNIT_ASSERT
+    extensions: [.abap]
+    pattern: '\bcl_abap_unit_assert\b'
+    min_sap_basis: "7.02"
+    source: ABAP Keyword Documentation, Tools in Release 7.0 EhP2 (CL_ABAP_UNIT_ASSERT replaces CL_AUNIT_ASSERT)
+  - id: string-concat-operator
+    description: Concatenation operator &&
+    extensions: [.abap]
+    pattern: '&&'
+    min_sap_basis: "7.02"
+    source: ABAP Keyword Documentation, Changes in Release 7.02 (string expressions)
+  - id: string-functions
+    description: Built-in string functions such as condense( ), to_upper( ), and substring( )
+    extensions: [.abap]
+    pattern: '(?<![-=]>|~)\b(condense|to_upper|to_lower|to_mixed|from_mixed|substring|substring_after|substring_before|substring_from|substring_to|shift_left|shift_right|concat_lines_of|contains_any_of|contains_any_not_of|count_any_of|count_any_not_of|find_end|find_any_of|find_any_not_of|char_off|cmax|cmin|matches)\(\s'
+    min_sap_basis: "7.02"
+    source: ABAP Keyword Documentation, Changes in Release 7.02 (string functions)
+  - id: method-chaining
+    description: Chained method calls such as lo_alv->get_functions( )->set_all( )
+    extensions: [.abap]
+    pattern: '\)\s*->\s*[a-z_/*]'
+    min_sap_basis: "7.02"
+    source: ABAP Keyword Documentation, Changes in Release 7.02 (method call chaining)
+  - id: dynamic-badi-access
+    description: Dynamic BAdI access, GET BADI ... TYPE (name) and CALL BADI badi->(method)
+    extensions: [.abap]
+    pattern: '\bGET\s+BADI\s+[\w/]+\s+TYPE\s*\(|\bCALL\s+BADI\s+[\w/]+\s*->\s*\('
+    min_sap_basis: "7.02"
+    source: ABAP Keyword Documentation, Enhancements in Release 7.0 EhP2 (dynamic GET BADI and CALL BADI)
+  - id: chained-call-statement
+    description: Chained method call as a standalone statement, for example lo_alv->get_functions( )->set_all( abap_true ).
+    extensions: [.abap]
+    pattern: '(?<=\.\s*)[\w/]+(?:->|=>)[\w/~]+\([^.]*?\)\s*->\s*[\w/~]+\('
+    min_sap_basis: "7.31"
+    source: ABAP Keyword Documentation, ABAP Objects in Release 7.0 EhP3 and 7.3 EhP1 (chained method call executed as a statement)
+  - id: secondary-table-keys
+    description: Secondary table keys (KEY name COMPONENTS, USING KEY)
+    extensions: [.abap]
+    pattern: '\bKEY\s+[\w/]+\s+COMPONENTS\b|\bUSING\s+KEY\b'
+    min_sap_basis: "7.02"
+    source: ABAP Keyword Documentation, Changes in Release 7.02 (secondary table keys)
+  - id: inline-declarations
+    description: Inline declarations DATA( ) and FIELD-SYMBOL( ); also checks function modules, which abaplint cannot syntax-check without the function group XML
+    extensions: [.abap]
+    pattern: '(?<![-=]>|~|\w)(?:DATA|FIELD-SYMBOL)\(\s*[<\w/]'
+    min_sap_basis: "7.40"
+    min_support_package: 2
+    source: ABAP Keyword Documentation, Expressions and Functions in Release 7.40 SP02 (inline declarations)
+  - id: final-inline-declarations
+    description: Immutable inline declarations FINAL( )
+    extensions: [.abap]
+    pattern: '(?<![-=]>|~|\w)FINAL\(\s*[\w/]'
+    min_sap_basis: "7.57"
+    source: ABAP Keyword Documentation, Expressions and Functions in Release 7.57 (FINAL declaration operator)
+  - id: wait-for-asynchronous-tasks
+    description: WAIT FOR ASYNCHRONOUS TASKS (replaces WAIT UNTIL for aRFC callbacks)
+    extensions: [.abap]
+    pattern: '\bWAIT\s+FOR\s+ASYNCHRONOUS\s+TASKS\b'
+    min_sap_basis: "7.40"
+    min_support_package: 2
+    source: ABAP Keyword Documentation, ABAP Channels in Release 7.40 SP02 (new variants of WAIT UNTIL)
+  - id: let-expressions
+    description: LET expressions in constructor expressions
+    extensions: [.abap]
+    pattern: '\bLET\s+[\w<>]+\s*='
+    min_sap_basis: "7.40"
+    min_support_package: 5
+    source: ABAP Keyword Documentation, Expressions in Release 7.40 SP05 (LET expressions)
+  - id: conditional-iterations
+    description: Conditional iterations FOR ... UNTIL and FOR ... WHILE
+    extensions: [.abap]
+    pattern: '\bFOR\s+[\w<>]+\s*=[^.]*?\b(UNTIL|WHILE)\b'
+    min_sap_basis: "7.40"
+    min_support_package: 8
+    source: ABAP Keyword Documentation, Expressions in Release 7.40 SP08 (iteration expressions)
+  - id: sql-inline-declarations
+    description: Inline declarations in ABAP SQL, INTO @DATA( )
+    extensions: [.abap]
+    pattern: '@\s*DATA\s*\('
+    min_sap_basis: "7.40"
+    min_support_package: 8
+    source: ABAP Keyword Documentation, ABAP SQL in Release 7.40 SP08 (inline declarations for the target area of SELECT)
+  - id: sql-into-last
+    description: INTO as the last clause of SELECT (after WHERE, GROUP BY, HAVING, or ORDER BY)
+    extensions: [.abap]
+    pattern: '\bSELECT\b[^.]*?\b(WHERE|GROUP\s+BY|HAVING|ORDER\s+BY)\b[^.]*?\bINTO\b'
+    min_sap_basis: "7.40"
+    min_support_package: 8
+    source: ABAP Keyword Documentation, ABAP SQL in Release 7.40 SP08 (position of the INTO clause)
+  - id: sql-searched-case
+    description: Searched CASE (CASE WHEN condition ...) in ABAP SQL
+    extensions: [.abap]
+    pattern: '\bCASE\s+WHEN\b'
+    min_sap_basis: "7.40"
+    min_support_package: 8
+    source: ABAP Keyword Documentation, ABAP SQL in Release 7.40 SP08 (SQL expressions)
+  - id: value-lines-of
+    description: LINES OF inside VALUE and NEW
+    extensions: [.abap]
+    pattern: '\(\s*LINES\s+OF\b'
+    min_sap_basis: "7.40"
+    min_support_package: 8
+    source: ABAP Keyword Documentation, Expressions in Release 7.40 SP08 (inserting table lines in constructed tables)
+  - id: base-addition
+    description: BASE addition in VALUE, NEW, and CORRESPONDING
+    extensions: [.abap]
+    pattern: '\b(VALUE|NEW|CORRESPONDING)\s+[\w~/#]+\(\s*BASE\s'
+    min_sap_basis: "7.40"
+    min_support_package: 8
+    source: ABAP Keyword Documentation, Changes in Release 7.40 SP08 (BASE for constructor expressions)
+  - id: sql-host-expressions
+    description: Host expressions @( ... ) in ABAP SQL
+    extensions: [.abap]
+    pattern: '@\('
+    min_sap_basis: "7.50"
+    source: ABAP Keyword Documentation, Changes in Release 7.50 (host expressions)

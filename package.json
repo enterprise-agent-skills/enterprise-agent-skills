@@ -1,0 +1,40 @@
+{
+  "name": "frontier-agent-skills-plugins",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Vendor-neutral Agent Skills and plugins for enterprise platforms (SAP, Microsoft, Salesforce, AWS, Google Cloud and others), validated without paid model credentials.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/frontier-agent-skills/frontier-agent-skills-plugins.git"
+  },
+  "homepage": "https://github.com/frontier-agent-skills/frontier-agent-skills-plugins#readme",
+  "bugs": {
+    "url": "https://github.com/frontier-agent-skills/frontier-agent-skills-plugins/issues"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "build:check": "node scripts/build.mjs --check",
+    "validate": "node scripts/validate.mjs",
+    "security": "node scripts/security-scan.mjs",
+    "test:unit": "node --test \"tests/unit/*.test.mjs\"",
+    "eval:mock": "node tests/harness/run.mjs",
+    "eval:vally": "node scripts/vally.mjs",
+    "check": "npm run build:check && npm run validate && npm run security && npm run test:unit && npm run eval:mock",
+    "report": "node scripts/report.mjs",
+    "links:external": "node scripts/check-external-links.mjs",
+    "new:skill": "node scripts/new-skill.mjs",
+    "export:upstream": "node scripts/export-upstream.mjs"
+  },
+  "devDependencies": {
+    "@abaplint/core": "2.120.70",
+    "@apexdevtools/apex-parser": "5.2.0",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "yaml": "2.9.1"
+  }
+}

@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "skill-scenarios.schema.json",
+  "title": "Skill test scenarios (tests/scenarios/<skill>/scenarios.yaml)",
+  "description": "Compatible superset of tests/schemas/skill-scenarios.schema.json in github.com/microsoft/skills. Fields required there are required here; extra fields used by this repository are optional and are stripped by scripts/export-upstream.mjs.",
+  "type": "object",
+  "required": ["config", "scenarios"],
+  "additionalProperties": false,
+  "properties": {
+    "config": {
+      "type": "object",
+      "required": ["model", "max_tokens", "temperature"],
+      "additionalProperties": false,
+      "properties": {
+        "model": { "type": "string", "description": "Used only by optional live evaluations." },
+        "max_tokens": { "type": "number" },
+        "temperature": { "type": "number" }
+      }
+    },
+    "environment": {
+      "$ref": "#/$defs/environment",
+      "description": "Default SAP environment for every scenario and acceptance-criteria example in this file. Required for skills whose answers contain ABAP or CDS."
+    },
+    "scenarios": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "prompt", "expected_patterns", "forbidden_patterns", "tags", "mock_response"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "pattern": "^[a-z0-9]+(_[a-z0-9]+)*$" },
+          "description": { "type": "string" },
+          "prompt": { "type": "string", "minLength": 20 },
+          "environment": {
+            "$ref": "#/$defs/environment",
+            "description": "SAP environment for this scenario. Replaces the file-level default entirely."
+          },
+          "expected_patterns": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "minLength": 1 }
+          },
+          "forbidden_patterns": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 }
+          },
+          "tags": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" }
+          },
+          "mock_response": {
+            "type": "string",
+            "minLength": 20,
+            "description": "Reference answer. Use '<comment> file: <path>' marker lines to split it into files so language validators can check each one."
+          },
+          "validators": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": { "enum": ["abaplint", "apex", "python", "javascript", "json", "yaml"] },
+            "description": "Validators that must run on the reference answer. Defaults to the validators implied by file extensions."
+          },
+          "context_files": {
+            "type": "array",
+            "description": "Objects that already exist in the target system and are quoted in the prompt, for example a BAdI interface. Validators parse them together with the answer so references resolve, but only the answer is graded.",
+            "items": {
+              "type": "object",
+              "required": ["path", "content"],
+              "additionalProperties": false,
+              "properties": {
+                "path": { "type": "string", "pattern": "^[A-Za-z0-9_./#-]+$" },
+                "content": { "type": "string", "minLength": 1 }
+              }
+            }
+          },
+          "negative_responses": {
+            "type": "array",
+            "description": "Known-bad answers. Each must fail this scenario, which proves the checks are not trivially satisfied.",
+            "items": {
+              "type": "object",
+              "required": ["name", "reason", "response"],
+              "additionalProperties": false,
+              "properties": {
+                "name": { "type": "string", "pattern": "^[a-z0-9]+(_[a-z0-9]+)*$" },
+                "reason": { "type": "string", "minLength": 10 },
+                "caught_by": {
+                  "enum": ["forbidden_pattern", "validator", "expected_pattern", "environment"],
+                  "description": "The kind of check that must reject this answer. 'environment' means a release or database rule from config/sap-environments.yaml."
+                },
+                "response": { "type": "string", "minLength": 10 }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "environment": {
+      "type": "object",
+      "required": ["product"],
+      "additionalProperties": false,
+      "description": "Target SAP system. Values are checked against config/sap-environments.yaml. Deployment does not change validation; product, release, support package, language version, and database do.",
+      "properties": {
+        "product": { "type": "string", "description": "Product id, for example ecc, netweaver, s4hana, s4hana-private-cloud, btp-abap." },
+        "release": { "type": "string", "description": "Product release id, for example ehp7 or 2023." },
+        "sap_basis": { "type": "string", "pattern": "^(\\d+\\.\\d{2}|cloud)$" },
+        "support_package": { "type": "integer", "minimum": 0, "maximum": 99 },
+        "deployment": { "type": "string", "description": "Where SAP runs, for example on-premise, azure-iaas, aws-iaas, gcp-iaas." },
+        "language_version": { "enum": ["standard", "cloud"] },
+        "database": { "enum": ["hana", "anydb"] }
+      }
+    }
+  }
+}

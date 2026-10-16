@@ -1,0 +1,69 @@
+name: live-evals
+
+# Optional live model evaluation with Vally and the GitHub Copilot CLI.
+# Disabled by default: it runs only when the repository variable ENABLE_LIVE_EVALS is "true"
+# and the secret COPILOT_TOKEN (fine-grained token with Copilot Requests permission) exists.
+# It is manual-only, never runs on pull requests, and is not a required check.
+
+on:
+  workflow_dispatch:
+    inputs:
+      skill:
+        description: "Skill name (folder under tests/scenarios/)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  vally-live:
+    name: vally-live
+    if: vars.ENABLE_LIVE_EVALS == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: live-evals
+    env:
+      VALLY_TELEMETRY_OPTOUT: "1"
+      DO_NOT_TRACK: "1"
+      SKILL: ${{ inputs.skill }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Validate input
+        run: |
+          if ! printf '%s' "$SKILL" | grep -Eq '^[a-z0-9]+(-[a-z0-9]+)*$'; then
+            echo "Invalid skill name" >&2
+            exit 1
+          fi
+          test -f "tests/scenarios/$SKILL/vally/eval.yaml"
+
+      - name: Run live evaluation
+        env:
+          GH_TOKEN: ${{ secrets.COPILOT_TOKEN }}
+          GITHUB_COPILOT_API_TOKEN: ${{ secrets.COPILOT_TOKEN }}
+        run: |
+          export FA_REPO_ROOT="$GITHUB_WORKSPACE"
+          VERSION=$(node -e "import('yaml').then(({parse})=>{const c=parse(require('fs').readFileSync('repo.config.yaml','utf8'));console.log(c.tooling.vally_cli_version)})")
+          npx --yes "@microsoft/vally-cli@${VERSION}" eval -e "tests/scenarios/$SKILL/vally/eval.yaml" --junit --output-dir vally-live
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: live-eval-${{ inputs.skill }}
+          path: vally-live/
+          retention-days: 30
+          if-no-files-found: warn

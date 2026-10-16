@@ -1,0 +1,2017 @@
+# yaml-language-server: $schema=../../../schemas/skill-scenarios.schema.json
+# Scenarios for sap-abap-enhancements. Each scenario names its SAP target; ABAP answers are
+# parsed with abaplint using the grammar of that release (config/sap-environments.yaml).
+# Objects that already exist in the customer system (the BAdI interfaces) are given as
+# context_files, so the answers validate against them without being graded for them.
+#
+# Patterns for statements are anchored to the start of a line and to the statement shape
+# (for example COMMIT WORK followed by a period), so prose that names a statement does not
+# fail a good answer. Patterns for recommendations skip a verb that a nearby "not", "never",
+# "avoid", or similar word negates, so a warning against a bad fix does not fail either.
+
+config:
+  model: claude-sonnet-4.6
+  max_tokens: 6000
+  temperature: 0.2
+
+# Default target: ECC 6.0 EHP8 (SAP_BASIS 7.50) on a database other than SAP HANA.
+environment:
+  product: ecc
+  release: ehp8
+  database: anydb
+  deployment: on-premise
+
+scenarios:
+  - name: implement_filtered_badi_ehp8
+    description: Implement a customer-defined single-use kernel BAdI with a filter value; no commit, table write, or message inside the method.
+    prompt: |
+      We run SAP ECC 6.0 EHP8 on Microsoft SQL Server. Our team defined the kernel BAdI
+      ZBADI_FA_ORDER_CHECK in enhancement spot ZES_FA_SD_ORDER: single use, one filter VKORG,
+      fallback class ZCL_FA_ORDER_CHECK_FALLBACK. This is its interface:
+
+        INTERFACE zif_fa_order_check PUBLIC.
+          INTERFACES if_badi_interface.
+          TYPES: BEGIN OF ty_order,
+                   vbeln TYPE vbak-vbeln,
+                   auart TYPE vbak-auart,
+                   vkorg TYPE vbak-vkorg,
+                   netwr TYPE vbak-netwr,
+                   waerk TYPE vbak-waerk,
+                 END OF ty_order.
+          TYPES ty_flag TYPE c LENGTH 1.
+          METHODS check_order
+            IMPORTING is_order   TYPE ty_order
+            EXPORTING ev_blocked TYPE ty_flag
+                      ev_reason  TYPE string.
+        ENDINTERFACE.
+
+      Implement it for sales organization 1000: standard orders (order type ZOR) in EUR with a
+      net value above 50,000 must be reported as blocked, with a reason. Include a unit test.
+    environment:
+      product: ecc
+      release: ehp8
+      database: anydb
+      deployment: on-premise
+    context_files:
+      - path: src/zif_fa_order_check.intf.abap
+        content: |
+          INTERFACE zif_fa_order_check PUBLIC.
+            INTERFACES if_badi_interface.
+            TYPES: BEGIN OF ty_order,
+                     vbeln TYPE vbak-vbeln,
+                     auart TYPE vbak-auart,
+                     vkorg TYPE vbak-vkorg,
+                     netwr TYPE vbak-netwr,
+                     waerk TYPE vbak-waerk,
+                   END OF ty_order.
+            TYPES ty_flag TYPE c LENGTH 1.
+            METHODS check_order
+              IMPORTING is_order   TYPE ty_order
+              EXPORTING ev_blocked TYPE ty_flag
+                        ev_reason  TYPE string.
+          ENDINTERFACE.
+    expected_patterns:
+      - '(?i)INTERFACES\s+zif_fa_order_check\b'
+      - '(?i)METHOD\s+zif_fa_order_check~check_order'
+      - '(?i)\bSE19\b|\bSE80\b'
+      - '(?i)\bvkorg\b\W{1,6}1000\b'
+      - '(?i)cx_badi_multiply_implemented|only\s+one\s+active\s+implementation'
+      - '(?i)FOR\s+TESTING'
+    forbidden_patterns:
+      - '(?i)^\s*COMMIT\s+WORK(?:\s+AND\s+WAIT)?\s*\.'
+      - '(?i)^\s*ROLLBACK\s+WORK\s*\.'
+      - '(?i)CALL\s+METHOD\s+cl_exithandler=>get_instance\b|^\s*cl_exithandler=>get_instance\s*\(\s*EXPORTING\b'
+      - '(?i)^\s*(?:INSERT\s+(?:INTO\s+)?|UPDATE\s+|MODIFY\s+|DELETE\s+(?:FROM\s+)?)(?:vbak|vbap)\b(?:\s+(?:CLIENT\s+SPECIFIED|USING\s+CLIENT\s+\S+))?\s+(?:FROM|SET|VALUES|WHERE)\b'
+      - '(?i)^\s*METHOD\b(?:(?!^\s*ENDMETHOD\b)[\s\S])*?^\s*(?:INSERT\s+(?:INTO\s+)?|UPDATE\s+|MODIFY\s+|DELETE\s+(?:FROM\s+)?)z\w+\s+(?:FROM|SET|VALUES|WHERE)\b'
+      - '(?i)^\s*METHOD\b(?:(?!^\s*ENDMETHOD\b)[\s\S])*?^\s*MESSAGE\s+(?:[ea]\d{3}\(|[^.\n]*\bTYPE\s+''[EA]'')'
+    tags: [badi, ecc, implementation, unit-test]
+    validators: [abaplint]
+    mock_response: |
+      Target assumed: SAP ECC 6.0 EHP8 (SAP_BASIS 7.50), Standard ABAP, Microsoft SQL Server.
+      Where the system runs does not change the code.
+
+      There is no Customizing for this rule, and ZBADI_FA_ORDER_CHECK is your own extension
+      point, so the rule belongs in a BAdI implementation. Create it in SAP GUI, because ECC
+      tops out at SAP_BASIS 7.50 and ADT has an editor for BAdI implementations only from
+      SAP_BASIS 7.57:
+
+      1. SE19, option "New BAdI", enhancement spot ZES_FA_SD_ORDER, Create Implementation.
+      2. Simple enhancement implementation ZEI_FA_SD_ORDER_1000 in your package, BAdI
+         implementation ZBI_FA_ORDER_CHECK_1000 for ZBADI_FA_ORDER_CHECK, implementing class
+         ZCL_FA_ORDER_CHECK_1000.
+      3. Filter value VKORG = 1000.
+      4. Keep "Implementation is active" set, activate the enhancement implementation and the
+         class, and record both on one workbench request.
+
+      The BAdI is single use, so only one active implementation may match VKORG 1000. A second
+      one makes GET BADI raise CX_BADI_MULTIPLY_IMPLEMENTED in the calling program. Other sales
+      organizations keep getting the fallback class.
+
+      The method only evaluates the order and returns the result in EV_BLOCKED and EV_REASON.
+      COMMIT WORK, table writes, and messages stay out of it: the method runs inside the
+      caller's logical unit of work, and the caller decides what to show.
+
+      ```abap
+      * file: src/zcl_fa_order_check_1000.clas.abap
+      CLASS zcl_fa_order_check_1000 DEFINITION PUBLIC FINAL CREATE PUBLIC.
+        PUBLIC SECTION.
+          INTERFACES zif_fa_order_check.
+          CONSTANTS gc_order_type TYPE vbak-auart VALUE 'ZOR'.
+          CONSTANTS gc_currency TYPE vbak-waerk VALUE 'EUR'.
+          CONSTANTS gc_limit TYPE vbak-netwr VALUE '50000.00'.
+      ENDCLASS.
+
+      CLASS zcl_fa_order_check_1000 IMPLEMENTATION.
+        METHOD zif_fa_order_check~check_order.
+          CLEAR: ev_blocked, ev_reason.
+          IF is_order-auart <> gc_order_type OR is_order-waerk <> gc_currency.
+            RETURN.
+          ENDIF.
+          IF is_order-netwr > gc_limit.
+            ev_blocked = 'X'.
+            ev_reason = 'Net value above 50,000 EUR needs approval'.
+          ENDIF.
+        ENDMETHOD.
+      ENDCLASS.
+      ```
+
+      ```abap
+      * file: src/zcl_fa_order_check_1000.clas.testclasses.abap
+      CLASS ltc_order_check DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
+        PRIVATE SECTION.
+          DATA mo_cut TYPE REF TO zif_fa_order_check.
+          METHODS setup.
+          METHODS blocks_large_standard_order FOR TESTING.
+          METHODS ignores_other_order_types FOR TESTING.
+          METHODS ignores_order_at_limit FOR TESTING.
+      ENDCLASS.
+
+      CLASS ltc_order_check IMPLEMENTATION.
+        METHOD setup.
+          CREATE OBJECT mo_cut TYPE zcl_fa_order_check_1000.
+        ENDMETHOD.
+
+        METHOD blocks_large_standard_order.
+          DATA ls_order TYPE zif_fa_order_check=>ty_order.
+          DATA lv_blocked TYPE zif_fa_order_check=>ty_flag.
+          DATA lv_reason TYPE string.
+          ls_order-auart = 'ZOR'.
+          ls_order-waerk = 'EUR'.
+          ls_order-netwr = '60000.00'.
+          mo_cut->check_order( EXPORTING is_order   = ls_order
+                               IMPORTING ev_blocked = lv_blocked
+                                         ev_reason  = lv_reason ).
+          cl_abap_unit_assert=>assert_equals( act = lv_blocked exp = 'X' ).
+          cl_abap_unit_assert=>assert_not_initial( lv_reason ).
+        ENDMETHOD.
+
+        METHOD ignores_other_order_types.
+          DATA ls_order TYPE zif_fa_order_check=>ty_order.
+          DATA lv_blocked TYPE zif_fa_order_check=>ty_flag.
+          DATA lv_reason TYPE string.
+          ls_order-auart = 'ZRE'.
+          ls_order-waerk = 'EUR'.
+          ls_order-netwr = '60000.00'.
+          mo_cut->check_order( EXPORTING is_order   = ls_order
+                               IMPORTING ev_blocked = lv_blocked
+                                         ev_reason  = lv_reason ).
+          cl_abap_unit_assert=>assert_initial( lv_blocked ).
+        ENDMETHOD.
+
+        METHOD ignores_order_at_limit.
+          DATA ls_order TYPE zif_fa_order_check=>ty_order.
+          DATA lv_blocked TYPE zif_fa_order_check=>ty_flag.
+          DATA lv_reason TYPE string.
+          ls_order-auart = 'ZOR'.
+          ls_order-waerk = 'EUR'.
+          ls_order-netwr = '50000.00'.
+          mo_cut->check_order( EXPORTING is_order   = ls_order
+                               IMPORTING ev_blocked = lv_blocked
+                                         ev_reason  = lv_reason ).
+          cl_abap_unit_assert=>assert_initial( lv_blocked ).
+        ENDMETHOD.
+      ENDCLASS.
+      ```
+
+      Objects to create: enhancement implementation ZEI_FA_SD_ORDER_1000, BAdI implementation
+      ZBI_FA_ORDER_CHECK_1000, class ZCL_FA_ORDER_CHECK_1000, and one workbench request. If the
+      limit differs per order type or changes often, move it to a customizing table maintained
+      with SM30 instead of constants.
+
+      Not verified without the system: activation, the filter value in SE19, and the unit test
+      run.
+    negative_responses:
+      - name: commit_in_badi_method
+        reason: COMMIT WORK inside the BAdI method commits the caller's open changes in the middle of its logical unit of work.
+        caught_by: forbidden_pattern
+        response: |
+          Create the implementation in SE19 (New BAdI, spot ZES_FA_SD_ORDER) with filter value
+          VKORG = 1000. Only one active implementation may match, otherwise GET BADI raises
+          CX_BADI_MULTIPLY_IMPLEMENTED. Blocked orders are also logged and committed right away.
+
+          * file: src/zcl_fa_order_check_1000.clas.abap
+          CLASS zcl_fa_order_check_1000 DEFINITION PUBLIC FINAL CREATE PUBLIC.
+            PUBLIC SECTION.
+              INTERFACES zif_fa_order_check.
+          ENDCLASS.
+
+          CLASS zcl_fa_order_check_1000 IMPLEMENTATION.
+            METHOD zif_fa_order_check~check_order.
+              DATA ls_log TYPE zfa_order_log.
+              CLEAR: ev_blocked, ev_reason.
+              IF is_order-auart = 'ZOR' AND is_order-waerk = 'EUR' AND is_order-netwr > '50000.00'.
+                ev_blocked = 'X'.
+                ev_reason = 'Net value above 50,000 EUR needs approval'.
+                ls_log-vbeln = is_order-vbeln.
+                ls_log-blocked = 'X'.
+                INSERT zfa_order_log FROM ls_log.
+                COMMIT WORK.
+              ENDIF.
+            ENDMETHOD.
+          ENDCLASS.
+          * file: src/zcl_fa_order_check_1000.clas.testclasses.abap
+          CLASS ltc_order_check DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
+            PRIVATE SECTION.
+              METHODS blocks_large_order FOR TESTING.
+          ENDCLASS.
+          CLASS ltc_order_check IMPLEMENTATION.
+            METHOD blocks_large_order.
+              DATA lo_cut TYPE REF TO zif_fa_order_check.
+              DATA ls_order TYPE zif_fa_order_check=>ty_order.
+              DATA lv_blocked TYPE zif_fa_order_check=>ty_flag.
+              DATA lv_reason TYPE string.
+              CREATE OBJECT lo_cut TYPE zcl_fa_order_check_1000.
+              ls_order-auart = 'ZOR'.
+              ls_order-waerk = 'EUR'.
+              ls_order-netwr = '60000.00'.
+              lo_cut->check_order( EXPORTING is_order   = ls_order
+                                   IMPORTING ev_blocked = lv_blocked
+                                             ev_reason  = lv_reason ).
+              cl_abap_unit_assert=>assert_equals( act = lv_blocked exp = 'X' ).
+            ENDMETHOD.
+          ENDCLASS.
+      - name: z_table_write_in_method
+        reason: The method writes its log table directly instead of through the update task, so the row is written at the next implicit database commit even if the caller never saves the document.
+        caught_by: forbidden_pattern
+        response: |
+          Create the implementation in SE19 (New BAdI, spot ZES_FA_SD_ORDER) with filter value
+          VKORG = 1000. Only one active implementation may match, otherwise GET BADI raises
+          CX_BADI_MULTIPLY_IMPLEMENTED. The method also writes every blocked order to the log
+          table; it does not commit, so the caller's commit saves the log row.
+
+          * file: src/zcl_fa_order_check_1000.clas.abap
+          CLASS zcl_fa_order_check_1000 DEFINITION PUBLIC FINAL CREATE PUBLIC.
+            PUBLIC SECTION.
+              INTERFACES zif_fa_order_check.
+          ENDCLASS.
+
+          CLASS zcl_fa_order_check_1000 IMPLEMENTATION.
+            METHOD zif_fa_order_check~check_order.
+              DATA ls_log TYPE zfa_order_log.
+              CLEAR: ev_blocked, ev_reason.
+              IF is_order-auart = 'ZOR' AND is_order-waerk = 'EUR' AND is_order-netwr > '50000.00'.
+                ev_blocked = 'X'.
+                ev_reason = 'Net value above 50,000 EUR needs approval'.
+                ls_log-vbeln = is_order-vbeln.
+                ls_log-blocked = 'X'.
+                MODIFY zfa_order_log FROM ls_log.
+              ENDIF.
+            ENDMETHOD.
+          ENDCLASS.
+          * file: src/zcl_fa_order_check_1000.clas.testclasses.abap
+          CLASS ltc_order_check DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
+            PRIVATE SECTION.
+              METHODS blocks_large_order FOR TESTING.
+          ENDCLASS.
+          CLASS ltc_order_check IMPLEMENTATION.
+            METHOD blocks_large_order.
+              DATA lo_cut TYPE REF TO zif_fa_order_check.
+              DATA ls_order TYPE zif_fa_order_check=>ty_order.
+              DATA lv_blocked TYPE zif_fa_order_check=>ty_flag.
+              DATA lv_reason TYPE string.
+              CREATE OBJECT lo_cut TYPE zcl_fa_order_check_1000.
+              ls_order-auart = 'ZOR'.
+              ls_order-waerk = 'EUR'.
+              ls_order-netwr = '60000.00'.
+              lo_cut->check_order( EXPORTING is_order   = ls_order
+                                   IMPORTING ev_blocked = lv_blocked
+                                             ev_reason  = lv_reason ).
+              cl_abap_unit_assert=>assert_equals( act = lv_blocked exp = 'X' ).
+            ENDMETHOD.
+          ENDCLASS.
+      - name: error_message_in_method
+        reason: The BAdI returns its result in EV_BLOCKED and EV_REASON so that the caller decides what to show; an error message inside the method interrupts the caller's processing instead.
+        caught_by: forbidden_pattern
+        response: |
+          Create the implementation in SE19 (New BAdI, spot ZES_FA_SD_ORDER) with filter value
+          VKORG = 1000. Only one active implementation may match, otherwise GET BADI raises
+          CX_BADI_MULTIPLY_IMPLEMENTED. The method also stops the user with an error message, so
+          nobody can miss the block.
+
+          * file: src/zcl_fa_order_check_1000.clas.abap
+          CLASS zcl_fa_order_check_1000 DEFINITION PUBLIC FINAL CREATE PUBLIC.
+            PUBLIC SECTION.
+              INTERFACES zif_fa_order_check.
+          ENDCLASS.
+
+          CLASS zcl_fa_order_check_1000 IMPLEMENTATION.
+            METHOD zif_fa_order_check~check_order.
+              CLEAR: ev_blocked, ev_reason.
+              IF is_order-auart = 'ZOR' AND is_order-waerk = 'EUR' AND is_order-netwr > '50000.00'.
+                ev_blocked = 'X'.
+                ev_reason = 'Net value above 50,000 EUR needs approval'.
+                MESSAGE e001(zfa_sd).
+              ENDIF.
+            ENDMETHOD.
+          ENDCLASS.
+          * file: src/zcl_fa_order_check_1000.clas.testclasses.abap
+          CLASS ltc_order_check DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
+            PRIVATE SECTION.
+              METHODS ignores_other_order_types FOR TESTING.
+          ENDCLASS.
+          CLASS ltc_order_check IMPLEMENTATION.
+            METHOD ignores_other_order_types.
+              DATA lo_cut TYPE REF TO zif_fa_order_check.
+              DATA ls_order TYPE zif_fa_order_check=>ty_order.
+              DATA lv_blocked TYPE zif_fa_order_check=>ty_flag.
+              DATA lv_reason TYPE string.
+              CREATE OBJECT lo_cut TYPE zcl_fa_order_check_1000.
+              ls_order-auart = 'ZRE'.
+              ls_order-waerk = 'EUR'.
+              ls_order-netwr = '60000.00'.
+              lo_cut->check_order( EXPORTING is_order   = ls_order
+                                   IMPORTING ev_blocked = lv_blocked
+                                             ev_reason  = lv_reason ).
+              cl_abap_unit_assert=>assert_initial( lv_blocked ).
+            ENDMETHOD.
+          ENDCLASS.
+      - name: undeclared_limit_variable
+        reason: The method compares against lv_limit, which is never declared, so the class does not compile.
+        caught_by: validator
+        response: |
+          Create the implementation in SE19 (New BAdI, spot ZES_FA_SD_ORDER) with filter value
+          VKORG = 1000. Only one active implementation may match, otherwise GET BADI raises
+          CX_BADI_MULTIPLY_IMPLEMENTED.
+
+          * file: src/zcl_fa_order_check_1000.clas.abap
+          CLASS zcl_fa_order_check_1000 DEFINITION PUBLIC FINAL CREATE PUBLIC.
+            PUBLIC SECTION.
+              INTERFACES zif_fa_order_check.
+          ENDCLASS.
+
+          CLASS zcl_fa_order_check_1000 IMPLEMENTATION.
+            METHOD zif_fa_order_check~check_order.
+              CLEAR: ev_blocked, ev_reason.
+              IF is_order-auart = 'ZOR' AND is_order-waerk = 'EUR' AND is_order-netwr > lv_limit.
+                ev_blocked = 'X'.
+                ev_reason = 'Net value above 50,000 EUR needs approval'.
+              ENDIF.
+            ENDMETHOD.
+          ENDCLASS.
+          * file: src/zcl_fa_order_check_1000.clas.testclasses.abap
+          CLASS ltc_order_check DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
+            PRIVATE SECTION.
+              METHODS blocks_large_order FOR TESTING.
+          ENDCLASS.
+          CLASS ltc_order_check IMPLEMENTATION.
+            METHOD blocks_large_order.
+              DATA lo_cut TYPE REF TO zif_fa_order_check.
+              DATA ls_order TYPE zif_fa_order_check=>ty_order.
+              DATA lv_blocked TYPE zif_fa_order_check=>ty_flag.
+              DATA lv_reason TYPE string.
+              CREATE OBJECT lo_cut TYPE zcl_fa_order_check_1000.
+              ls_order-auart = 'ZOR'.
+              ls_order-waerk = 'EUR'.
+              ls_order-netwr = '60000.00'.
+              lo_cut->check_order( EXPORTING is_order   = ls_order
+                                   IMPORTING ev_blocked = lv_blocked
+                                             ev_reason  = lv_reason ).
+              cl_abap_unit_assert=>assert_equals( act = lv_blocked exp = 'X' ).
+            ENDMETHOD.
+          ENDCLASS.
+
+  - name: call_own_badi_ehp5
+    description: Call your own BAdI from a report on SAP_BASIS 7.02 so that systems without an implementation keep working.
+    prompt: |
+      Our system is SAP ECC 6.0 EHP5 (SAP_BASIS 7.02) on Oracle, running on AWS EC2. We defined
+      the kernel BAdI ZBADI_FA_ORDER_CHECK in enhancement spot ZES_FA_SD_ORDER (single use,
+      filter VKORG) with this interface:
+
+        INTERFACE zif_fa_order_check PUBLIC.
+          INTERFACES if_badi_interface.
+          TYPES: BEGIN OF ty_order,
+                   vbeln TYPE vbak-vbeln,
+                   auart TYPE vbak-auart,
+                   vkorg TYPE vbak-vkorg,
+                   netwr TYPE vbak-netwr,
+                   waerk TYPE vbak-waerk,
+                 END OF ty_order.
+          TYPES ty_flag TYPE c LENGTH 1.
+          METHODS check_order
+            IMPORTING is_order   TYPE ty_order
+            EXPORTING ev_blocked TYPE ty_flag
+                      ev_reason  TYPE string.
+        ENDINTERFACE.
+
+      Write a report that selects the sales orders of one sales organization and creation date
+      range, asks the BAdI for each order whether it is blocked, and shows the result in an ALV
+      list. The report must also run in systems where nobody has implemented the BAdI.
+    environment:
+      product: ecc
+      release: ehp5
+      database: anydb
+      deployment: aws-iaas
+    context_files:
+      - path: src/zif_fa_order_check.intf.abap
+        content: |
+          INTERFACE zif_fa_order_check PUBLIC.
+            INTERFACES if_badi_interface.
+            TYPES: BEGIN OF ty_order,
+                     vbeln TYPE vbak-vbeln,
+                     auart TYPE vbak-auart,
+                     vkorg TYPE vbak-vkorg,
+                     netwr TYPE vbak-netwr,
+                     waerk TYPE vbak-waerk,
+                   END OF ty_order.
+            TYPES ty_flag TYPE c LENGTH 1.
+            METHODS check_order
+              IMPORTING is_order   TYPE ty_order
+              EXPORTING ev_blocked TYPE ty_flag
+                        ev_reason  TYPE string.
+          ENDINTERFACE.
+    expected_patterns:
+      - '(?i)TYPE\s+REF\s+TO\s+zbadi_fa_order_check\b'
+      - '(?i)GET\s+BADI\s+\w+\s+FILTERS\s+vkorg\s*='
+      - '(?i)CALL\s+BADI\s+\w+->check_order'
+      - '(?i)CATCH\s+(?:cx_\w+\s+)*?(?:cx_badi_not_implemented|cx_badi_not_single_use|cx_badi)\b|fallback\s+class\s+\W?z\w+'
+      - '(?i)cl_salv_table=>factory|REUSE_ALV_(?:GRID|LIST)_DISPLAY|cl_gui_alv_grid'
+    forbidden_patterns:
+      - '(?i)CALL\s+METHOD\s+cl_exithandler=>get_instance\b|^\s*cl_exithandler=>get_instance\s*\(\s*EXPORTING\b'
+      - '(?i)^\s*CALL\s+CUSTOMER-FUNCTION\s+''\d{3}'''
+      - '(?i)^\s*LOOP\s+AT\b(?:(?!^\s*ENDLOOP\b)[\s\S])*?^\s*GET\s+BADI\b'
+      - '(?i)^\s*LOOP\s+AT\b(?:(?!^\s*ENDLOOP\b)[\s\S])*?^\s*SELECT\b(?!-)'
+      - '(?i)null_instance_accepted\s*=\s*''X''(?:(?!IS\s+(?:NOT\s+)?(?:INITIAL|BOUND)\b)[\s\S])*?->'
+    tags: [badi, ecc, release-aware, iaas]
+    validators: [abaplint]
+    mock_response: |
+      Target assumed: SAP ECC 6.0 EHP5 (SAP_BASIS 7.02), Standard ABAP, Oracle. Running on AWS
+      EC2 does not change the code. The report uses no 7.40 syntax: no inline declarations, no
+      constructor expressions, and the classic ABAP SQL syntax.
+
+      Make the BAdI safe for systems without an implementation in two places:
+
+      1. In the BAdI definition (SE18 or SE80, enhancement spot ZES_FA_SD_ORDER), enter the
+         fallback class ZCL_FA_ORDER_CHECK_FALLBACK shown below. GET BADI then returns it when
+         no implementation is active and also when no implementation matches the sales
+         organization, so the call never fails for lack of an implementation.
+      2. In the report, catch CX_BADI_NOT_IMPLEMENTED anyway. It occurs only if the fallback
+         class is removed from the definition, and the report then shows no blocks instead of
+         ending in a short dump.
+
+      The report gets the BAdI once, before it processes the orders, because the filter value is
+      the selection parameter. Inside the LOOP AT the report only calls the BAdI: the SELECT and
+      GET BADI each run once, before the loop. CX_BADI_MULTIPLY_IMPLEMENTED means that two
+      active implementations match the same sales organization. That is a configuration error,
+      so the report stops with a message. The reference is typed with the BAdI name, not with
+      the interface. CL_EXITHANDLER is the factory for classic BAdIs and plays no part here.
+
+      ```abap
+      * file: src/zfa_order_release_check.prog.abap
+      REPORT zfa_order_release_check.
+
+      TYPES: BEGIN OF ty_result,
+               vbeln   TYPE vbak-vbeln,
+               auart   TYPE vbak-auart,
+               netwr   TYPE vbak-netwr,
+               waerk   TYPE vbak-waerk,
+               blocked TYPE c LENGTH 1,
+               reason  TYPE c LENGTH 80,
+             END OF ty_result.
+
+      DATA gv_erdat TYPE vbak-erdat.
+      DATA gt_orders TYPE STANDARD TABLE OF zif_fa_order_check=>ty_order WITH DEFAULT KEY.
+      DATA gs_order TYPE zif_fa_order_check=>ty_order.
+      DATA gt_result TYPE STANDARD TABLE OF ty_result WITH DEFAULT KEY.
+      DATA gs_result TYPE ty_result.
+      DATA go_badi TYPE REF TO zbadi_fa_order_check.
+      DATA gv_blocked TYPE zif_fa_order_check=>ty_flag.
+      DATA gv_reason TYPE string.
+      DATA go_alv TYPE REF TO cl_salv_table.
+      DATA gx_salv TYPE REF TO cx_salv_msg.
+
+      PARAMETERS p_vkorg TYPE vbak-vkorg OBLIGATORY.
+      SELECT-OPTIONS s_erdat FOR gv_erdat OBLIGATORY.
+
+      AT SELECTION-SCREEN.
+        AUTHORITY-CHECK OBJECT 'V_VBAK_VKO'
+          ID 'VKORG' FIELD p_vkorg
+          ID 'VTWEG' DUMMY
+          ID 'SPART' DUMMY
+          ID 'ACTVT' FIELD '03'.
+        IF sy-subrc <> 0.
+          MESSAGE e398(00) WITH 'No display authorization for sales organization' p_vkorg.
+        ENDIF.
+
+      START-OF-SELECTION.
+        SELECT vbeln auart vkorg netwr waerk
+          FROM vbak
+          INTO CORRESPONDING FIELDS OF TABLE gt_orders
+          UP TO 5000 ROWS
+          WHERE vkorg = p_vkorg
+            AND erdat IN s_erdat.
+
+        TRY.
+            GET BADI go_badi
+              FILTERS
+                vkorg = p_vkorg.
+          CATCH cx_badi_not_implemented.
+            CLEAR go_badi.
+          CATCH cx_badi_multiply_implemented.
+            MESSAGE 'Several active implementations of ZBADI_FA_ORDER_CHECK match this sales organization'
+              TYPE 'S' DISPLAY LIKE 'E'.
+            RETURN.
+        ENDTRY.
+
+        LOOP AT gt_orders INTO gs_order.
+          CLEAR: gs_result, gv_blocked, gv_reason.
+          MOVE-CORRESPONDING gs_order TO gs_result.
+          IF go_badi IS BOUND.
+            CALL BADI go_badi->check_order
+              EXPORTING
+                is_order   = gs_order
+              IMPORTING
+                ev_blocked = gv_blocked
+                ev_reason  = gv_reason.
+            gs_result-blocked = gv_blocked.
+            gs_result-reason = gv_reason.
+          ENDIF.
+          APPEND gs_result TO gt_result.
+        ENDLOOP.
+
+        TRY.
+            cl_salv_table=>factory( IMPORTING r_salv_table = go_alv
+                                    CHANGING  t_table      = gt_result ).
+            go_alv->display( ).
+          CATCH cx_salv_msg INTO gx_salv.
+            MESSAGE gx_salv TYPE 'E'.
+        ENDTRY.
+      ```
+
+      ```abap
+      * file: src/zcl_fa_order_check_fallback.clas.abap
+      CLASS zcl_fa_order_check_fallback DEFINITION PUBLIC FINAL CREATE PUBLIC.
+        PUBLIC SECTION.
+          INTERFACES zif_fa_order_check.
+      ENDCLASS.
+
+      CLASS zcl_fa_order_check_fallback IMPLEMENTATION.
+        METHOD zif_fa_order_check~check_order.
+      *   Used when no implementation matches the sales organization: block nothing.
+          CLEAR: ev_blocked, ev_reason.
+        ENDMETHOD.
+      ENDCLASS.
+      ```
+
+      Objects to create: the program with selection texts for P_VKORG and S_ERDAT, the fallback
+      class, and the fallback class entry in the BAdI definition, all on one workbench request.
+      Replace the authorization object if your organization uses another one for sales
+      documents.
+
+      Not verified without the system: activation, the authorization object, and whether the
+      BAdI definition already names the fallback class.
+    negative_responses:
+      - name: exithandler_for_kernel_badi
+        reason: CL_EXITHANDLER=>GET_INSTANCE is the factory of classic BAdIs; it does not return kernel BAdI implementations, so the extra branch is wrong code.
+        caught_by: forbidden_pattern
+        response: |
+          Target: ECC 6.0 EHP5. If GET BADI finds nothing, the report falls back to the classic
+          BAdI factory.
+
+          * file: src/zfa_order_release_check.prog.abap
+          REPORT zfa_order_release_check.
+          DATA gv_erdat TYPE vbak-erdat.
+          DATA gt_orders TYPE STANDARD TABLE OF zif_fa_order_check=>ty_order WITH DEFAULT KEY.
+          DATA gs_order TYPE zif_fa_order_check=>ty_order.
+          DATA go_badi TYPE REF TO zbadi_fa_order_check.
+          DATA go_exit TYPE REF TO zif_fa_order_check.
+          DATA gv_blocked TYPE zif_fa_order_check=>ty_flag.
+          DATA gv_reason TYPE string.
+          DATA go_alv TYPE REF TO cl_salv_table.
+          PARAMETERS p_vkorg TYPE vbak-vkorg OBLIGATORY.
+          SELECT-OPTIONS s_erdat FOR gv_erdat.
+          START-OF-SELECTION.
+            SELECT vbeln auart vkorg netwr waerk FROM vbak
+              INTO CORRESPONDING FIELDS OF TABLE gt_orders
+              WHERE vkorg = p_vkorg AND erdat IN s_erdat.
+            TRY.
+                GET BADI go_badi FILTERS vkorg = p_vkorg.
+              CATCH cx_badi_not_implemented.
+                CALL METHOD cl_exithandler=>get_instance
+                  EXPORTING
+                    exit_name = 'ZBADI_FA_ORDER_CHECK'
+                  CHANGING
+                    instance  = go_exit.
+            ENDTRY.
+            LOOP AT gt_orders INTO gs_order.
+              IF go_badi IS BOUND.
+                CALL BADI go_badi->check_order
+                  EXPORTING is_order   = gs_order
+                  IMPORTING ev_blocked = gv_blocked
+                            ev_reason  = gv_reason.
+              ELSEIF go_exit IS BOUND.
+                go_exit->check_order( EXPORTING is_order   = gs_order
+                                      IMPORTING ev_blocked = gv_blocked
+                                                ev_reason  = gv_reason ).
+              ENDIF.
+            ENDLOOP.
+            cl_salv_table=>factory( IMPORTING r_salv_table = go_alv CHANGING t_table = gt_orders ).
+            go_alv->display( ).
+      - name: inline_declarations_on_702
+        reason: Inline declarations need SAP_BASIS 7.40 SP02; the report does not compile on ECC 6.0 EHP5.
+        caught_by: validator
+        response: |
+          Target: ECC 6.0 EHP5. The fallback class ZCL_FA_ORDER_CHECK_FALLBACK is set in the BAdI
+          definition, and CX_BADI_NOT_IMPLEMENTED is caught as well.
+
+          * file: src/zfa_order_release_check.prog.abap
+          REPORT zfa_order_release_check.
+          DATA gv_erdat TYPE vbak-erdat.
+          DATA gt_orders TYPE STANDARD TABLE OF zif_fa_order_check=>ty_order WITH DEFAULT KEY.
+          DATA go_badi TYPE REF TO zbadi_fa_order_check.
+          PARAMETERS p_vkorg TYPE vbak-vkorg OBLIGATORY.
+          SELECT-OPTIONS s_erdat FOR gv_erdat.
+          START-OF-SELECTION.
+            SELECT vbeln auart vkorg netwr waerk FROM vbak
+              INTO CORRESPONDING FIELDS OF TABLE gt_orders
+              WHERE vkorg = p_vkorg AND erdat IN s_erdat.
+            TRY.
+                GET BADI go_badi FILTERS vkorg = p_vkorg.
+              CATCH cx_badi_not_implemented.
+                CLEAR go_badi.
+            ENDTRY.
+            LOOP AT gt_orders INTO DATA(ls_order).
+              IF go_badi IS BOUND.
+                CALL BADI go_badi->check_order
+                  EXPORTING is_order   = ls_order
+                  IMPORTING ev_blocked = DATA(lv_blocked)
+                            ev_reason  = DATA(lv_reason).
+              ENDIF.
+            ENDLOOP.
+            cl_salv_table=>factory( IMPORTING r_salv_table = DATA(lo_alv) CHANGING t_table = gt_orders ).
+            lo_alv->display( ).
+      - name: no_safe_default
+        reason: Without a fallback class or a CATCH for CX_BADI_NOT_IMPLEMENTED, the report dumps in every system without a matching implementation.
+        caught_by: expected_pattern
+        response: |
+          Target: ECC 6.0 EHP5 (SAP_BASIS 7.02), classic syntax only.
+
+          * file: src/zfa_order_release_check.prog.abap
+          REPORT zfa_order_release_check.
+          DATA gv_erdat TYPE vbak-erdat.
+          DATA gt_orders TYPE STANDARD TABLE OF zif_fa_order_check=>ty_order WITH DEFAULT KEY.
+          DATA gs_order TYPE zif_fa_order_check=>ty_order.
+          DATA go_badi TYPE REF TO zbadi_fa_order_check.
+          DATA gv_blocked TYPE zif_fa_order_check=>ty_flag.
+          DATA gv_reason TYPE string.
+          DATA go_alv TYPE REF TO cl_salv_table.
+          PARAMETERS p_vkorg TYPE vbak-vkorg OBLIGATORY.
+          SELECT-OPTIONS s_erdat FOR gv_erdat.
+          START-OF-SELECTION.
+            SELECT vbeln auart vkorg netwr waerk FROM vbak
+              INTO CORRESPONDING FIELDS OF TABLE gt_orders
+              WHERE vkorg = p_vkorg AND erdat IN s_erdat.
+            GET BADI go_badi FILTERS vkorg = p_vkorg.
+            LOOP AT gt_orders INTO gs_order.
+              CALL BADI go_badi->check_order
+                EXPORTING is_order   = gs_order
+                IMPORTING ev_blocked = gv_blocked
+                          ev_reason  = gv_reason.
+            ENDLOOP.
+            cl_salv_table=>factory( IMPORTING r_salv_table = go_alv CHANGING t_table = gt_orders ).
+            go_alv->display( ).
+      - name: fallback_not_needed
+        reason: A sentence about the fallback class is no safety mechanism; without a fallback class or a CATCH for CX_BADI_NOT_IMPLEMENTED the report still dumps in every system without a matching implementation.
+        caught_by: expected_pattern
+        response: |
+          Target: ECC 6.0 EHP5 (SAP_BASIS 7.02), classic syntax only. A fallback class is not
+          needed for this report.
+
+          * file: src/zfa_order_release_check.prog.abap
+          REPORT zfa_order_release_check.
+          DATA gv_erdat TYPE vbak-erdat.
+          DATA gt_orders TYPE STANDARD TABLE OF zif_fa_order_check=>ty_order WITH DEFAULT KEY.
+          DATA gs_order TYPE zif_fa_order_check=>ty_order.
+          DATA go_badi TYPE REF TO zbadi_fa_order_check.
+          DATA gv_blocked TYPE zif_fa_order_check=>ty_flag.
+          DATA gv_reason TYPE string.
+          DATA go_alv TYPE REF TO cl_salv_table.
+          PARAMETERS p_vkorg TYPE vbak-vkorg OBLIGATORY.
+          SELECT-OPTIONS s_erdat FOR gv_erdat.
+          START-OF-SELECTION.
+            SELECT vbeln auart vkorg netwr waerk FROM vbak
+              INTO CORRESPONDING FIELDS OF TABLE gt_orders
+              WHERE vkorg = p_vkorg AND erdat IN s_erdat.
+            GET BADI go_badi FILTERS vkorg = p_vkorg.
+            LOOP AT gt_orders INTO gs_order.
+              CALL BADI go_badi->check_order
+                EXPORTING is_order   = gs_order
+                IMPORTING ev_blocked = gv_blocked
+                          ev_reason  = gv_reason.
+            ENDLOOP.
+            cl_salv_table=>factory( IMPORTING r_salv_table = go_alv CHANGING t_table = gt_orders ).
+            go_alv->display( ).
+
+  - name: sd_save_check_user_exit
+    description: Customizing first; the SD user exit is named honestly as a modification, keeps SAP's logical unit of work intact, and its dialog and BAPI effects are stated.
+    prompt: |
+      We run SAP ECC 6.0 EHP7 with SAP_BASIS 7.40 SP08 on IBM Db2 in Azure. Sales wants this
+      rule: standard orders (order type ZOR) in sales organization 1000 with a net value of
+      10,000 EUR or more must not be saved without an approval number. We already added the
+      field ZZAPPROVAL to VBAK with an append structure and show it on the header screen.
+      Where and how should we implement the check?
+    environment:
+      product: ecc
+      release: ehp7
+      support_package: 8
+      database: anydb
+      deployment: azure-iaas
+    expected_patterns:
+      - '(?i)Customizing'
+      - '(?i)incomplet'
+      - '(?i)USEREXIT_SAVE_DOCUMENT_PREPARE'
+      - '(?i)MV45AFZZ'
+      - '(?i)(?:\b(?:is|are|remains?|stays?|considered)\s+|\bcounts?\s+as\s+|\b(?:classif|treat|document|rat|list)\w*\s+(?:\w+\s+){0,4}as\s+|\btype\s+)(?:still\s+|\w+ly\s+)?(?:an?\s+)?\W{0,2}modifications?\b'
+      - '(?i)(?:object|access)\s+key|SSCR'
+    forbidden_patterns:
+      - '(?i)^\s*COMMIT\s+WORK(?:\s+AND\s+WAIT)?\s*\.'
+      - '(?i)^\s*ROLLBACK\s+WORK\s*\.'
+      - '(?i)^\s*(?:INSERT\s+(?:INTO\s+)?|UPDATE\s+|MODIFY\s+|DELETE\s+(?:FROM\s+)?)(?:vbak|vbap|vbkd|vbep)\b(?:\s+(?:CLIENT\s+SPECIFIED|USING\s+CLIENT\s+\S+))?\s+(?:FROM|SET|VALUES|WHERE)\b'
+      - '(?i)^\s*CALL\s+TRANSACTION\s+(?:''|\(|[a-z_]\w*\s*(?:\.|AND\b|USING\b|WITH\b))'
+      - '(?i)^\s*SUBMIT\s+(?:\(|[zy]\w*[_\d]\w*\b|r\w*\d|\w+\s+AND\s+RETURN\b|\w+\s+VIA\s+SELECTION-SCREEN\b)'
+      - '(?i)^\s*FORM\s+userexit_save_document\s*\.(?:(?!^\s*ENDFORM\b)[\s\S])*?^\s*MESSAGE\b'
+      - '(?i)(?<!(?:\bnot|\bnever|n''t|\bno\s+need\s+to|\bwithout)\s+(?:\w+\s+){0,6})\b(?:request|obtain|get|need)(?:s|ed)?\s+(?:an?\s+|the\s+)?(?:SSCR\s+)?(?:object|access)\s+key\s+for\s+(?:the\s+)?(?:(?:program|module\s+pool)\s+)?SAPMV45A\b'
+      - '(?i)(?<!(?:\bnot|\bnever|n''t|\bwithout|\bavoid\w*)\s+(?:\w+\s+){0,6})\b(?:insert|add|put|write|create|implement|change|modify)\b(?:(?!\bnot\b|\bnever\b|n''t\b|\binstead\b|\brather\b|USEREXIT|[.;:!?,])[^\n]){0,80}?\bBELEG_SICHERN\b'
+      - '(?i)(?<!(?:\bnot|\bnever|n''t|\bno\s+need\s+to|\bwithout|\bavoid\w*|\bresist(?:\s+the\s+temptation)?\s+to|\bwrong\s+to|\binstead\s+of|\brather\s+than)\s+(?:\w+\s+){0,6})\b(?:create|add|use|implement|write|put|insert)\b(?:(?!\bnot\b|\bnever\b|n''t\b|\binstead\b|\brather\b|\bthan\b|[.;:!?])[^\n]){0,60}?\bimplicit\s+enhancement'
+      - '(?i)^\s*ENDENHANCEMENT\s*\.'
+      - '(?i)(?:user\s*exits?|USEREXIT_\w+|MV45AFZZ)\s*,\s*not\s+(?:an?\s+)?modifications?\b|(?:user\s*exits?|USEREXIT_\w+|MV45AFZZ)(?:\s+\w+){0,6}?\s+(?:(?:is|are)(?:\s+\w+)?\s+(?:not|never)|isn''t|aren''t|(?:do|does)\s+not\s+count\s+as)\s+(?:an?\s+)?modifications?\b'
+    tags: [user-exit, sd, customizing, luw]
+    validators: [abaplint]
+    mock_response: |
+      Target assumed: SAP ECC 6.0 EHP7 with SAP_BASIS 7.40 SP08, Standard ABAP, IBM Db2.
+      Running on Azure does not change the code.
+
+      1. Check Customizing first. An incompleteness procedure makes a field mandatory for a
+         sales document type (Customizing for Sales and Distribution > Basic Functions > Log of
+         Incomplete Items > Define Incompleteness Procedures, assigned to the order type in
+         Assign Incompleteness Procedures), and the sales document type decides whether an
+         incomplete document can be saved. Incompleteness checks whether a field is filled, not
+         the net value. If the business accepts "approval number required for every ZOR order",
+         this solves it without any code; confirm that with your SD consultant first.
+
+      2. If the 10,000 EUR threshold must stay, the code option is the user exit
+         USEREXIT_SAVE_DOCUMENT_PREPARE in include MV45AFZZ of program SAPMV45A. SAP's IMG
+         documentation describes it as the last place to change or check a sales document
+         before it is saved. Be clear about what it is: SAP classifies application user exits
+         as modifications. On ECC, changing MV45AFZZ needs an SSCR object key, and the key
+         becomes invalid after a release upgrade. The include appears in SPAU only when an
+         upgrade delivers a new version of it, so keep it on your list of modified objects
+         (SE95) and check it after every upgrade. After a later conversion to S/4HANA there are
+         no SSCR keys, but the change is still a modification. If SE18 or the IMG documents a
+         BAdI for checks at save time in your release, prefer that.
+
+         Do not request an access key for SAPMV45A itself, and do not create an implicit
+         enhancement in FORM BELEG_SICHERN: the user exit is the place SAP provides for this
+         check.
+
+      3. Put the rule in a class and unit test it there; keep the routine in MV45AFZZ to a few
+         lines.
+
+      ```abap
+      * file: src/zcl_fa_sd_approval_rule.clas.abap
+      CLASS zcl_fa_sd_approval_rule DEFINITION PUBLIC FINAL CREATE PUBLIC.
+        PUBLIC SECTION.
+          CONSTANTS gc_order_type TYPE vbak-auart VALUE 'ZOR'.
+          CONSTANTS gc_sales_org TYPE vbak-vkorg VALUE '1000'.
+          CONSTANTS gc_currency TYPE vbak-waerk VALUE 'EUR'.
+          CONSTANTS gc_limit TYPE vbak-netwr VALUE '10000.00'.
+
+          CLASS-METHODS approval_missing
+            IMPORTING iv_auart          TYPE vbak-auart
+                      iv_vkorg          TYPE vbak-vkorg
+                      iv_netwr          TYPE vbak-netwr
+                      iv_waerk          TYPE vbak-waerk
+                      iv_approval       TYPE vbak-zzapproval
+            RETURNING VALUE(rv_missing) TYPE abap_bool.
+      ENDCLASS.
+
+      CLASS zcl_fa_sd_approval_rule IMPLEMENTATION.
+        METHOD approval_missing.
+          rv_missing = abap_false.
+          IF iv_auart = gc_order_type
+             AND iv_vkorg = gc_sales_org
+             AND iv_waerk = gc_currency
+             AND iv_netwr >= gc_limit
+             AND iv_approval IS INITIAL.
+            rv_missing = abap_true.
+          ENDIF.
+        ENDMETHOD.
+      ENDCLASS.
+      ```
+
+      ```abap
+      * file: src/zcl_fa_sd_approval_rule.clas.testclasses.abap
+      CLASS ltc_approval_rule DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
+        PRIVATE SECTION.
+          METHODS missing_at_limit FOR TESTING.
+          METHODS filled_above_limit FOR TESTING.
+          METHODS below_limit FOR TESTING.
+      ENDCLASS.
+
+      CLASS ltc_approval_rule IMPLEMENTATION.
+        METHOD missing_at_limit.
+          cl_abap_unit_assert=>assert_equals(
+            act = zcl_fa_sd_approval_rule=>approval_missing( iv_auart    = 'ZOR'
+                                                             iv_vkorg    = '1000'
+                                                             iv_netwr    = '10000.00'
+                                                             iv_waerk    = 'EUR'
+                                                             iv_approval = space )
+            exp = abap_true ).
+        ENDMETHOD.
+
+        METHOD filled_above_limit.
+          cl_abap_unit_assert=>assert_equals(
+            act = zcl_fa_sd_approval_rule=>approval_missing( iv_auart    = 'ZOR'
+                                                             iv_vkorg    = '1000'
+                                                             iv_netwr    = '25000.00'
+                                                             iv_waerk    = 'EUR'
+                                                             iv_approval = 'A-4711' )
+            exp = abap_false ).
+        ENDMETHOD.
+
+        METHOD below_limit.
+          cl_abap_unit_assert=>assert_equals(
+            act = zcl_fa_sd_approval_rule=>approval_missing( iv_auart    = 'ZOR'
+                                                             iv_vkorg    = '1000'
+                                                             iv_netwr    = '9999.99'
+                                                             iv_waerk    = 'EUR'
+                                                             iv_approval = space )
+            exp = abap_false ).
+        ENDMETHOD.
+      ENDCLASS.
+      ```
+
+      The routine in MV45AFZZ. This is a fragment, because it uses the global work area VBAK of
+      SAPMV45A:
+
+      ```abap
+      FORM userexit_save_document_prepare.
+        IF zcl_fa_sd_approval_rule=>approval_missing( iv_auart    = vbak-auart
+                                                      iv_vkorg    = vbak-vkorg
+                                                      iv_netwr    = vbak-netwr
+                                                      iv_waerk    = vbak-waerk
+                                                      iv_approval = vbak-zzapproval ) = abap_true.
+          MESSAGE e001(zfa_sd).
+        ENDIF.
+      ENDFORM.
+      ```
+
+      4. Test the error message in dialog before you transport. In VA01 and VA02 the save runs
+         while the function code is processed, outside any FIELD or CHAIN statement, so after
+         the error message no field is ready for input: users report that the order screen
+         becomes display-only and that they have to leave the order without saving. If that is
+         not acceptable, a common approach in dialog is a type S message with DISPLAY LIKE 'E'
+         followed by LEAVE TO SCREEN sy-dynnr, which skips the save and keeps the order
+         editable. SAP does not document this for SAPMV45A, so test it in VA01 and VA02 on your
+         release, and keep the error message for BAPI, IDoc, and batch input processing, which
+         have no screen. The incompleteness procedure from step 1 avoids the problem entirely.
+
+      5. Check the other channels. BAPI_SALESORDER_CREATEFROMDAT2 and the other SD BAPIs take
+         customer fields of VBAK only through EXTENSIONIN, and ZZAPPROVAL must also be added to
+         the extension structures that SAP Note 143580 describes (BAPE_VBAK, BAPE_VBAKX,
+         VBAKKOZ, VBAKKOZX). IDoc inbound processing needs its own mapping. Until every
+         interface that creates ZOR orders supplies the field, the check rejects those orders,
+         so agree on it with the interface owners.
+
+      6. Rules for this exit.
+
+      COMMIT WORK and ROLLBACK WORK do not belong here. The routine runs at the start of SAP's
+      save, and SAP commits once, at the end.
+
+      CALL TRANSACTION and SUBMIT are not allowed either: the called program would commit in
+      the middle of the save.
+
+      Do not write VBAK yourself. The screen fills ZZAPPROVAL, and SAP saves it with the
+      document.
+
+      Do not put the check into USEREXIT_SAVE_DOCUMENT. That routine runs right before the
+      commit and is meant for writing your own tables in the update task.
+
+      Objects to create: message class ZFA_SD with message 001 ("Approval number required for
+      orders of 10,000 EUR or more"), class ZCL_FA_SD_APPROVAL_RULE, the change to MV45AFZZ with
+      its object key, the BAPI extension appends if interfaces create ZOR orders, and one
+      workbench request.
+
+      Not verified without the system: activation, the screen behavior after the message in
+      your release, the message behavior in BAPI and IDoc processing, and whether your release
+      offers a BAdI for this check.
+    negative_responses:
+      - name: commit_in_user_exit
+        reason: COMMIT WORK in the save exit posts SAP's half-prepared document and breaks the logical unit of work.
+        caught_by: forbidden_pattern
+        response: |
+          Customizing (the incompleteness procedure) cannot test the value, so use
+          USEREXIT_SAVE_DOCUMENT_PREPARE in MV45AFZZ. It is a modification and needs an SSCR
+          object key. The check is logged and committed right away so the log survives.
+
+          ```abap
+          * file: src/zcl_fa_sd_approval_rule.clas.abap
+          CLASS zcl_fa_sd_approval_rule DEFINITION PUBLIC FINAL CREATE PUBLIC.
+            PUBLIC SECTION.
+              CLASS-METHODS approval_missing
+                IMPORTING iv_netwr          TYPE vbak-netwr
+                          iv_approval       TYPE vbak-zzapproval
+                RETURNING VALUE(rv_missing) TYPE abap_bool.
+          ENDCLASS.
+          CLASS zcl_fa_sd_approval_rule IMPLEMENTATION.
+            METHOD approval_missing.
+              rv_missing = abap_false.
+              IF iv_netwr >= '10000.00' AND iv_approval IS INITIAL.
+                rv_missing = abap_true.
+              ENDIF.
+            ENDMETHOD.
+          ENDCLASS.
+          ```
+
+          ```abap
+          FORM userexit_save_document_prepare.
+            IF zcl_fa_sd_approval_rule=>approval_missing( iv_netwr    = vbak-netwr
+                                                          iv_approval = vbak-zzapproval ) = abap_true.
+              INSERT zfa_approval_log FROM vbak.
+              COMMIT WORK.
+              MESSAGE e001(zfa_sd).
+            ENDIF.
+          ENDFORM.
+          ```
+      - name: direct_vbak_update
+        reason: Updating VBAK directly bypasses SAP's update logic and locks, and the next implicit database commit makes it permanent even if the save is cancelled.
+        caught_by: forbidden_pattern
+        response: |
+          Customizing (the incompleteness procedure) cannot test the value, so use
+          USEREXIT_SAVE_DOCUMENT_PREPARE in MV45AFZZ. It is a modification and needs an SSCR
+          object key. Instead of stopping the user, the exit marks the order directly in VBAK.
+
+          ```abap
+          * file: src/zcl_fa_sd_approval_rule.clas.abap
+          CLASS zcl_fa_sd_approval_rule DEFINITION PUBLIC FINAL CREATE PUBLIC.
+            PUBLIC SECTION.
+              CLASS-METHODS approval_missing
+                IMPORTING iv_netwr          TYPE vbak-netwr
+                          iv_approval       TYPE vbak-zzapproval
+                RETURNING VALUE(rv_missing) TYPE abap_bool.
+          ENDCLASS.
+          CLASS zcl_fa_sd_approval_rule IMPLEMENTATION.
+            METHOD approval_missing.
+              rv_missing = abap_false.
+              IF iv_netwr >= '10000.00' AND iv_approval IS INITIAL.
+                rv_missing = abap_true.
+              ENDIF.
+            ENDMETHOD.
+          ENDCLASS.
+          ```
+
+          ```abap
+          FORM userexit_save_document_prepare.
+            IF zcl_fa_sd_approval_rule=>approval_missing( iv_netwr    = vbak-netwr
+                                                          iv_approval = vbak-zzapproval ) = abap_true.
+              UPDATE vbak SET zzapproval = 'MISSING' WHERE vbeln = vbak-vbeln.
+            ENDIF.
+          ENDFORM.
+          ```
+      - name: no_customizing_first
+        reason: The answer goes straight to code and never checks whether Customizing (the incompleteness procedure) meets the requirement.
+        caught_by: expected_pattern
+        response: |
+          Use USEREXIT_SAVE_DOCUMENT_PREPARE in MV45AFZZ. It is a modification and needs an SSCR
+          object key.
+
+          ```abap
+          * file: src/zcl_fa_sd_approval_rule.clas.abap
+          CLASS zcl_fa_sd_approval_rule DEFINITION PUBLIC FINAL CREATE PUBLIC.
+            PUBLIC SECTION.
+              CLASS-METHODS approval_missing
+                IMPORTING iv_netwr          TYPE vbak-netwr
+                          iv_approval       TYPE vbak-zzapproval
+                RETURNING VALUE(rv_missing) TYPE abap_bool.
+          ENDCLASS.
+          CLASS zcl_fa_sd_approval_rule IMPLEMENTATION.
+            METHOD approval_missing.
+              rv_missing = abap_false.
+              IF iv_netwr >= '10000.00' AND iv_approval IS INITIAL.
+                rv_missing = abap_true.
+              ENDIF.
+            ENDMETHOD.
+          ENDCLASS.
+          ```
+
+          ```abap
+          FORM userexit_save_document_prepare.
+            IF zcl_fa_sd_approval_rule=>approval_missing( iv_netwr    = vbak-netwr
+                                                          iv_approval = vbak-zzapproval ) = abap_true.
+              MESSAGE e001(zfa_sd).
+            ENDIF.
+          ENDFORM.
+          ```
+      - name: user_exit_not_a_modification
+        reason: SAP classifies application user exits such as USEREXIT_SAVE_DOCUMENT_PREPARE as modifications; calling the routine "not a modification" hides the object key and the upgrade checks it needs.
+        caught_by: forbidden_pattern
+        response: |
+          Customizing (the incompleteness procedure) cannot test the net value, so use
+          USEREXIT_SAVE_DOCUMENT_PREPARE in MV45AFZZ. A change to SAPMV45A itself is a
+          modification, but USEREXIT_SAVE_DOCUMENT_PREPARE is a user exit, not a modification,
+          so no SSCR object key is needed and nothing has to be checked after upgrades.
+
+          ```abap
+          * file: src/zcl_fa_sd_approval_rule.clas.abap
+          CLASS zcl_fa_sd_approval_rule DEFINITION PUBLIC FINAL CREATE PUBLIC.
+            PUBLIC SECTION.
+              CLASS-METHODS approval_missing
+                IMPORTING iv_netwr          TYPE vbak-netwr
+                          iv_approval       TYPE vbak-zzapproval
+                RETURNING VALUE(rv_missing) TYPE abap_bool.
+          ENDCLASS.
+          CLASS zcl_fa_sd_approval_rule IMPLEMENTATION.
+            METHOD approval_missing.
+              rv_missing = abap_false.
+              IF iv_netwr >= '10000.00' AND iv_approval IS INITIAL.
+                rv_missing = abap_true.
+              ENDIF.
+            ENDMETHOD.
+          ENDCLASS.
+          ```
+
+          ```abap
+          FORM userexit_save_document_prepare.
+            IF zcl_fa_sd_approval_rule=>approval_missing( iv_netwr    = vbak-netwr
+                                                          iv_approval = vbak-zzapproval ) = abap_true.
+              MESSAGE e001(zfa_sd).
+            ENDIF.
+          ENDFORM.
+          ```
+      - name: implicit_enhancement_in_beleg_sichern
+        reason: An implicit enhancement in SAP's FORM BELEG_SICHERN attaches to SAP's internal code where SAP provides a user exit; it is clean core level D and needs adjustment whenever SAP changes that code.
+        caught_by: forbidden_pattern
+        response: |
+          Customizing (the incompleteness procedure) cannot test the net value.
+          USEREXIT_SAVE_DOCUMENT_PREPARE in MV45AFZZ would work, but it is a modification and needs
+          an SSCR object key.
+          Create an implicit enhancement at the start of FORM BELEG_SICHERN instead and call the
+          class there; an enhancement needs no key.
+
+          ```abap
+          * file: src/zcl_fa_sd_approval_rule.clas.abap
+          CLASS zcl_fa_sd_approval_rule DEFINITION PUBLIC FINAL CREATE PUBLIC.
+            PUBLIC SECTION.
+              CLASS-METHODS approval_missing
+                IMPORTING iv_netwr          TYPE vbak-netwr
+                          iv_approval       TYPE vbak-zzapproval
+                RETURNING VALUE(rv_missing) TYPE abap_bool.
+          ENDCLASS.
+          CLASS zcl_fa_sd_approval_rule IMPLEMENTATION.
+            METHOD approval_missing.
+              rv_missing = abap_false.
+              IF iv_netwr >= '10000.00' AND iv_approval IS INITIAL.
+                rv_missing = abap_true.
+              ENDIF.
+            ENDMETHOD.
+          ENDCLASS.
+          ```
+
+          The code inside the implicit enhancement:
+
+          ```abap
+          IF zcl_fa_sd_approval_rule=>approval_missing( iv_netwr    = vbak-netwr
+                                                        iv_approval = vbak-zzapproval ) = abap_true.
+            MESSAGE e001(zfa_sd).
+          ENDIF.
+          ```
+      - name: access_key_for_sapmv45a
+        reason: Changing SAP's module pool SAPMV45A itself is a modification of SAP code where SAP provides a user exit for exactly this check.
+        caught_by: forbidden_pattern
+        response: |
+          Customizing (the incompleteness procedure) cannot test the net value. The user exit
+          USEREXIT_SAVE_DOCUMENT_PREPARE in MV45AFZZ is a modification anyway and needs an SSCR
+          object key, so change the standard directly:
+          request an access key for program SAPMV45A and insert the check at the start of
+          FORM BELEG_SICHERN, where it runs for every save.
+
+          ```abap
+          * file: src/zcl_fa_sd_approval_rule.clas.abap
+          CLASS zcl_fa_sd_approval_rule DEFINITION PUBLIC FINAL CREATE PUBLIC.
+            PUBLIC SECTION.
+              CLASS-METHODS approval_missing
+                IMPORTING iv_netwr          TYPE vbak-netwr
+                          iv_approval       TYPE vbak-zzapproval
+                RETURNING VALUE(rv_missing) TYPE abap_bool.
+          ENDCLASS.
+          CLASS zcl_fa_sd_approval_rule IMPLEMENTATION.
+            METHOD approval_missing.
+              rv_missing = abap_false.
+              IF iv_netwr >= '10000.00' AND iv_approval IS INITIAL.
+                rv_missing = abap_true.
+              ENDIF.
+            ENDMETHOD.
+          ENDCLASS.
+          ```
+      - name: typed_plugin_in_user_exit
+        reason: The editor generates ENHANCEMENT and ENDENHANCEMENT; text typed into MV45AFZZ is still a modification, not a plug-in, and only looks like one.
+        caught_by: forbidden_pattern
+        response: |
+          Customizing (the incompleteness procedure) cannot test the net value, so use
+          USEREXIT_SAVE_DOCUMENT_PREPARE in MV45AFZZ. It is a modification and needs an SSCR
+          object key. To keep the code apart from SAP's, wrap it in an enhancement block.
+
+          ```abap
+          * file: src/zcl_fa_sd_approval_rule.clas.abap
+          CLASS zcl_fa_sd_approval_rule DEFINITION PUBLIC FINAL CREATE PUBLIC.
+            PUBLIC SECTION.
+              CLASS-METHODS approval_missing
+                IMPORTING iv_netwr          TYPE vbak-netwr
+                          iv_approval       TYPE vbak-zzapproval
+                RETURNING VALUE(rv_missing) TYPE abap_bool.
+          ENDCLASS.
+          CLASS zcl_fa_sd_approval_rule IMPLEMENTATION.
+            METHOD approval_missing.
+              rv_missing = abap_false.
+              IF iv_netwr >= '10000.00' AND iv_approval IS INITIAL.
+                rv_missing = abap_true.
+              ENDIF.
+            ENDMETHOD.
+          ENDCLASS.
+          ```
+
+          ```abap
+          FORM userexit_save_document_prepare.
+          ENHANCEMENT 1 ZEI_FA_APPROVAL_CHECK.
+            IF zcl_fa_sd_approval_rule=>approval_missing( iv_netwr    = vbak-netwr
+                                                          iv_approval = vbak-zzapproval ) = abap_true.
+              MESSAGE e001(zfa_sd).
+            ENDIF.
+          ENDENHANCEMENT.
+          ENDFORM.
+          ```
+
+  - name: mrp_badi_after_conversion
+    description: A classic MRP BAdI implementation is no longer called after the conversion; explain SPAU and SPAU_ENH and move to SAP's verified successor.
+    prompt: |
+      We converted our ECC 6.0 EHP8 system to S/4HANA 2023 last month. Our implementation of the
+      BAdI MD_CHANGE_MRP_DATA, which adds requirements from a Z table to the planning run, no
+      longer has any effect: the planners now run MRP with MD01N and our requirements are
+      ignored. SPAU and SPAU_ENH showed nothing for this implementation. What happened, and how
+      do we fix it?
+    environment:
+      product: s4hana
+      release: "2023"
+      deployment: gcp-iaas
+    expected_patterns:
+      - '(?i)MRP\s+Live'
+      - '(?i)PPH_MRP_RUN_BADI'
+      - '(?i)MDPS_ADJUST'
+      - '(?i)\bAMDP'
+      - '(?i)SPAU_ENH'
+      - '(?i)simplification'
+    forbidden_patterns:
+      - '(?i)^\s*ENDENHANCEMENT\s*\.'
+      - '(?i)(?<!(?:\bnot|\bnever|n''t|\bno\s+need\s+to|\bwithout)\s+(?:\w+\s+){0,6})\b(?:(?:request|obtain|register|need)(?:s|ed)?|gets?)\s+(?:an?\s+|the\s+)?(?:SSCR\s+)?(?:object|access)\s+key'
+      - '(?i)(?<!(?:\bnot|\bnever|n''t|\bno\s+need\s+to|\bwithout|\bavoid\w*|\bresist(?:\s+the\s+temptation)?\s+to|\bwrong\s+to|\binstead\s+of|\brather\s+than)\s+(?:\w+\s+){0,6})\b(?:create|add|use|implement|write|put|insert)\b(?:(?!\bnot\b|\bnever\b|n''t\b|\binstead\b|\brather\b|\bthan\b|[.;:!?])[^\n]){0,60}?\bimplicit\s+enhancement'
+      - '(?i)(?<!(?:\bnot|\bnever|n''t|\bwithout|\bavoid\w*)\s+(?:\w+\s+){0,6})\b(?:use|open|start)\b(?:(?!\bnot\b|\bnever\b|n''t\b|[.;:!?])[^\n]){0,20}?\bModification\s+Assistant\b'
+      - '(?i)Show\s+Implicit\s+Enhancement'
+    tags: [upgrade, s4hana, conversion, mrp]
+    mock_response: |
+      Target assumed: SAP S/4HANA 2023 (SAP_BASIS 7.58), Standard ABAP, SAP HANA. Running on
+      Google Cloud does not change the answer.
+
+      What happened: your implementation is intact, but MRP no longer calls it. In S/4HANA,
+      MRP Live (MD01N) runs its calculations in SQLScript, CDS views, and AMDPs on the database.
+      SAP's simplification item "MRP in HANA" (SAP Note 2268085) states that enhancements and
+      BAdI implementations of the classic MRP run do not work for materials that MRP Live
+      plans. Even the classic transactions MD01, MD02, and MD03 read receipts and requirements
+      with an AMDP in S/4HANA, and unlike ECC 617 and 618 this cannot be switched off.
+
+      Why SPAU and SPAU_ENH were empty: SPAU adjusts modifications, SAP Notes, and the migration
+      of classic BAdIs and SMOD exits. SPAU_ENH adjusts enhancement implementations only where
+      SAP changed the enhanced object incompatibly. The BAdI definition and your implementation
+      are still consistent, so neither tool had anything to show. Neither tool tells you whether
+      a call point still runs.
+
+      How to fix it:
+
+      1. Move the logic to the successor SAP names in the simplification item: the AMDP BAdI
+         PPH_MRP_RUN_BADI, method MDPS_ADJUST, for materials planned by MRP Live. AMDP BAdIs
+         (available from SAP_BASIS 7.40 SP08) run SQLScript on SAP HANA, and AMDP source can
+         only be edited in ADT. Create the enhancement implementation in ADT, copy the method
+         signature from the BAdI interface in your system, and read your Z table in SQLScript.
+         AMDP does no implicit client handling: list the Z table after USING and filter its
+         client column, with the client parameter of the method if the interface has one,
+         otherwise with SESSION_CONTEXT('CLIENT'). Without that filter the method adds the
+         requirements of every client.
+      2. If planners also use MD01, MD02, or MD03, or MRP Live hands materials over to classic
+         MRP, the simplification list names the ABAP BAdI MD_ADD_ELEMENTS as the replacement for
+         MD_CHANGE_MRP_DATA in those transactions. Planning transactions that are not optimized
+         for SAP HANA, such as MD50 and MD51, still support MD_CHANGE_MRP_DATA.
+      3. Deactivate the old implementation once no transaction you use calls it, so nobody
+         maintains logic that never runs.
+      4. Test with MD01N and the stock/requirements list (MD04) for a material with requirements
+         in your Z table. Run ATC with the check variant S4HANA_READINESS on the converted
+         system for the rest of your custom code.
+      5. Read the simplification items of the other processes you enhanced. MRP is not the only
+         process SAP replaced, and an empty SPAU does not prove that an old exit still runs.
+
+      Do not force the old BAdI back. Do not modify SAP's MRP code, and do not create an
+      implicit enhancement that calls the old implementation: MRP Live does not run the classic
+      code path, such changes are clean core level D, and they need adjustment whenever SAP
+      changes the code they depend on (SPAU or SPAU_ENH). S/4HANA has no SSCR object keys (SAP
+      Note 2309060); the system change option (SE06), the client settings (SCC4), and S_DEVELOP
+      authorizations decide who may change SAP code, so code reviews have to catch such
+      changes.
+
+      Not verified without the system: the exact signature of PPH_MRP_RUN_BADI in your release
+      (check it in ADT or SE18), and which of your materials MRP Live plans and which it hands
+      over to classic MRP.
+    negative_responses:
+      - name: implicit_enhancement_workaround
+        reason: Re-activating the classic BAdI through an implicit enhancement in SAP code is clean core level D and does not run in MRP Live's database procedures.
+        caught_by: forbidden_pattern
+        response: |
+          MRP Live (MD01N) runs in AMDPs, and the simplification item says classic MRP BAdIs are
+          not called. SAP's successor is the AMDP BAdI PPH_MRP_RUN_BADI, method MDPS_ADJUST, but
+          rewriting the logic in SQLScript takes time, and SPAU_ENH found nothing to adjust.
+          Quicker: create an implicit enhancement at the end of the classic MRP function module
+          that reads the planning data, and call your old implementation from there.
+
+          ```abap
+          ENHANCEMENT 1 ZEI_FA_MRP_CALL_OLD_BADI.
+            DATA lo_badi TYPE REF TO zcl_fa_mrp_data.
+            CREATE OBJECT lo_badi.
+            lo_badi->add_requirements( ).
+          ENDENHANCEMENT.
+          ```
+      - name: implicit_option_put_call
+        reason: Calling the old implementation from an implicit enhancement option in SAP's MRP code is clean core level D, and MRP Live does not run that code at all.
+        caught_by: forbidden_pattern
+        response: |
+          MRP Live (MD01N) runs in AMDPs, and the simplification item says the classic MRP BAdIs
+          are not called. SPAU_ENH found nothing because your implementation is still
+          consistent. SAP's successor is the AMDP BAdI PPH_MRP_RUN_BADI, method MDPS_ADJUST, but
+          the SQLScript rewrite can wait:
+          put a call to your old implementation into the implicit enhancement option at the end
+          of the classic MRP function module, and the requirements come back.
+      - name: reactivate_and_retransport
+        reason: The answer treats the problem as a transport or activation issue and never names MRP Live or the AMDP BAdI that replaces the classic MRP BAdI.
+        caught_by: expected_pattern
+        response: |
+          The implementation was probably deactivated during the conversion. Open SE19, check
+          that the implementation of MD_CHANGE_MRP_DATA is active, activate it again, and
+          re-transport it. Then run SPAU_ENH once more and check that nothing is left to adjust.
+      - name: modify_sap_code
+        reason: Modifying SAP's MRP code to call the old BAdI is a modification that every upgrade overwrites, and it is clean core level D.
+        caught_by: forbidden_pattern
+        response: |
+          MRP Live (MD01N) runs in AMDPs and no longer calls the classic BAdI; the simplification
+          item names PPH_MRP_RUN_BADI, method MDPS_ADJUST, as the successor, and SPAU_ENH cannot
+          show this. If you want to keep the ABAP code, request an object key for the SAP
+          function module that reads the MRP data, and add the BAdI call back with the
+          Modification Assistant.
+      - name: modification_assistant_with_key
+        reason: Adding the BAdI call to SAP's MRP code with the Modification Assistant is a modification, clean core level D, and MRP Live does not run that code; S/4HANA has no object keys either.
+        caught_by: forbidden_pattern
+        response: |
+          MRP Live (MD01N) runs in AMDPs and no longer calls the classic BAdI; the simplification
+          item names PPH_MRP_RUN_BADI, method MDPS_ADJUST, as the AMDP successor, and SPAU_ENH
+          cannot show this. To keep your ABAP code, use the Modification Assistant to add the
+          BAdI call back into SAP's MRP reading function module; you will need an access key for
+          it.
+
+  - name: call_classic_badi_ehp4
+    description: Call a customer classic BAdI from a class on SAP_BASIS 7.01; instance fetched once, null instance checked, filter value passed with each call, classic syntax only.
+    prompt: |
+      We are on SAP ECC 6.0 EHP4 (SAP_BASIS 7.01) with SAP MaxDB. Years ago our team defined
+      the classic BAdI ZFA_ORDER_EXIT in SE18: filter-dependent on the sales organization, not
+      multiple use, never migrated. SE18 generated this interface:
+
+        INTERFACE zif_ex_fa_order_exit PUBLIC.
+          METHODS change_net_value
+            IMPORTING flt_val  TYPE vbak-vkorg
+            CHANGING  cv_netwr TYPE vbak-netwr.
+        ENDINTERFACE.
+
+      Our new class ZCL_FA_ORDER_SERVICE receives a table of orders (VBELN, VKORG, NETWR) and
+      must let the BAdI adjust the net value of each order. Systems without an active
+      implementation must keep working. Please write the class with a unit test.
+    environment:
+      product: ecc
+      release: ehp4
+      database: anydb
+      deployment: on-premise
+    context_files:
+      - path: src/zif_ex_fa_order_exit.intf.abap
+        content: |
+          INTERFACE zif_ex_fa_order_exit PUBLIC.
+            METHODS change_net_value
+              IMPORTING flt_val  TYPE vbak-vkorg
+              CHANGING  cv_netwr TYPE vbak-netwr.
+          ENDINTERFACE.
+    expected_patterns:
+      - '(?i)cl_exithandler=>get_instance'
+      - '(?i)null_instance_accepted\s*=\s*''X'''
+      - '(?i)\bflt_val\s*='
+      - '(?i)FOR\s+TESTING'
+      - '(?i)\bmigrat\w*'
+    forbidden_patterns:
+      - '(?i)^\s*LOOP\s+AT\b(?:(?!^\s*ENDLOOP\b)[\s\S])*?cl_exithandler=>get_instance'
+      - '(?i)null_instance_accepted\s*=\s*''X''(?:(?!IS\s+(?:NOT\s+)?(?:INITIAL|BOUND)\b)[\s\S])*?->'
+      - '(?i)TYPE\s+REF\s+TO\s+(?:zif_ex_fa_order_exit|zfa_order_exit)\b[\s\S]*?^\s*GET\s+BADI\s+\w+\s*(?:\.|FILTERS\b|CONTEXT\b)'
+      - '(?i)^\s*COMMIT\s+WORK(?:\s+AND\s+WAIT)?\s*\.'
+    tags: [classic-badi, ecc, release-aware, unit-test]
+    validators: [abaplint]
+    mock_response: |
+      Target assumed: SAP ECC 6.0 EHP4 (SAP_BASIS 7.01), Standard ABAP, SAP MaxDB. The code uses
+      only 7.00 syntax: no 7.02 expressions, test properties as pseudo comments, and
+      CL_AUNIT_ASSERT for the assertions.
+
+      ZFA_ORDER_EXIT is a classic BAdI, so the caller gets its instance from the factory
+      CL_EXITHANDLER=>GET_INSTANCE and calls the interface method directly. The statements
+      GET BADI and CALL BADI work only for BAdIs defined in an enhancement spot, so they cannot
+      reach ZFA_ORDER_EXIT unless it is migrated.
+
+      How the class handles it:
+
+      1. The constructor gets the instance once, with null_instance_accepted = 'X'. Without an
+         active implementation the reference stays initial, so the class checks it before it
+         calls the BAdI, and systems without an implementation keep the net values unchanged.
+      2. The class passes the sales organization in FLT_VAL with every call, because a classic
+         BAdI receives its filter value per call. As the BAdI is filter-dependent and not
+         multiple use, each sales organization can have its own active implementation.
+      3. GET_INSTANCE reads the BAdI administration data, so the class never calls it per order.
+      4. The constructor accepts a test double, so the unit test does not depend on which
+         implementations are active in the test system.
+
+      ```abap
+      * file: src/zcl_fa_order_service.clas.abap
+      CLASS zcl_fa_order_service DEFINITION PUBLIC FINAL CREATE PUBLIC.
+        PUBLIC SECTION.
+          TYPES: BEGIN OF ty_order,
+                   vbeln TYPE vbak-vbeln,
+                   vkorg TYPE vbak-vkorg,
+                   netwr TYPE vbak-netwr,
+                 END OF ty_order.
+          TYPES ty_orders TYPE STANDARD TABLE OF ty_order WITH DEFAULT KEY.
+
+          METHODS constructor
+            IMPORTING io_exit TYPE REF TO zif_ex_fa_order_exit OPTIONAL.
+          METHODS adjust_net_values
+            CHANGING ct_orders TYPE ty_orders.
+        PRIVATE SECTION.
+          DATA mo_exit TYPE REF TO zif_ex_fa_order_exit.
+      ENDCLASS.
+
+      CLASS zcl_fa_order_service IMPLEMENTATION.
+        METHOD constructor.
+      *   Unit tests pass a test double; productive callers pass nothing.
+          IF io_exit IS BOUND.
+            mo_exit = io_exit.
+            RETURN.
+          ENDIF.
+      *   Get the instance once per service object, not once per order.
+      *   With null_instance_accepted = 'X' the reference stays initial
+      *   when no implementation is active.
+          CALL METHOD cl_exithandler=>get_instance
+            EXPORTING
+              exit_name              = 'ZFA_ORDER_EXIT'
+              null_instance_accepted = 'X'
+            CHANGING
+              instance               = mo_exit
+            EXCEPTIONS
+              OTHERS                 = 1.
+          IF sy-subrc <> 0.
+            CLEAR mo_exit.
+          ENDIF.
+        ENDMETHOD.
+
+        METHOD adjust_net_values.
+          FIELD-SYMBOLS <ls_order> TYPE ty_order.
+
+          IF mo_exit IS INITIAL.
+            RETURN.
+          ENDIF.
+          LOOP AT ct_orders ASSIGNING <ls_order>.
+      *     A classic BAdI receives the filter value with every call.
+            CALL METHOD mo_exit->change_net_value
+              EXPORTING
+                flt_val  = <ls_order>-vkorg
+              CHANGING
+                cv_netwr = <ls_order>-netwr.
+          ENDLOOP.
+        ENDMETHOD.
+      ENDCLASS.
+      ```
+
+      ```abap
+      * file: src/zcl_fa_order_service.clas.testclasses.abap
+      CLASS lcl_exit_double DEFINITION FINAL FOR TESTING.
+        PUBLIC SECTION.
+          INTERFACES zif_ex_fa_order_exit.
+      ENDCLASS.
+
+      CLASS lcl_exit_double IMPLEMENTATION.
+        METHOD zif_ex_fa_order_exit~change_net_value.
+          IF flt_val = '1000'.
+            cv_netwr = 0.
+          ENDIF.
+        ENDMETHOD.
+      ENDCLASS.
+
+      CLASS ltc_order_service DEFINITION FINAL FOR TESTING. "#AU Risk_Level Harmless
+        "#AU Duration Short
+        PRIVATE SECTION.
+          METHODS passes_filter_value FOR TESTING.
+      ENDCLASS.
+
+      CLASS ltc_order_service IMPLEMENTATION.
+        METHOD passes_filter_value.
+          DATA lo_double TYPE REF TO lcl_exit_double.
+          DATA lo_cut TYPE REF TO zcl_fa_order_service.
+          DATA lt_orders TYPE zcl_fa_order_service=>ty_orders.
+          DATA ls_order TYPE zcl_fa_order_service=>ty_order.
+          DATA lv_zero TYPE vbak-netwr VALUE 0.
+          DATA lv_unchanged TYPE vbak-netwr VALUE '150.00'.
+
+          CREATE OBJECT lo_double.
+          CREATE OBJECT lo_cut
+            EXPORTING
+              io_exit = lo_double.
+          ls_order-vbeln = '0000000001'.
+          ls_order-vkorg = '1000'.
+          ls_order-netwr = lv_unchanged.
+          APPEND ls_order TO lt_orders.
+          ls_order-vbeln = '0000000002'.
+          ls_order-vkorg = '2000'.
+          APPEND ls_order TO lt_orders.
+
+          lo_cut->adjust_net_values( CHANGING ct_orders = lt_orders ).
+
+          READ TABLE lt_orders INTO ls_order INDEX 1.
+          cl_aunit_assert=>assert_equals( act = ls_order-netwr exp = lv_zero ).
+          READ TABLE lt_orders INTO ls_order INDEX 2.
+          cl_aunit_assert=>assert_equals( act = ls_order-netwr exp = lv_unchanged ).
+        ENDMETHOD.
+      ENDCLASS.
+      ```
+
+      Objects to create: class ZCL_FA_ORDER_SERVICE with its test class, on one workbench
+      request. The BAdI definition and its interface stay as they are.
+
+      Because your team owns ZFA_ORDER_EXIT, consider migrating it to a kernel BAdI in SE18
+      (Utilities > Migrate Classic BAdI) in the system where it was created. SAP regenerates
+      the proxy class, so existing CL_EXITHANDLER calls keep working, and new callers can use
+      GET BADI. Define any new call point as a kernel BAdI, not as a classic one.
+
+      Not verified without the system: activation, which implementations are active for each
+      sales organization, and the unit test run.
+    negative_responses:
+      - name: get_instance_per_order
+        reason: GET_INSTANCE reads the BAdI administration data on every call; calling it once per order inside the loop costs time for every document.
+        caught_by: forbidden_pattern
+        response: |
+          Target: ECC 6.0 EHP4 (7.01). ZFA_ORDER_EXIT is a classic BAdI, so the class uses
+          CL_EXITHANDLER=>GET_INSTANCE with null_instance_accepted = 'X' and passes FLT_VAL.
+          Migration to a kernel BAdI is not needed for this.
+
+          * file: src/zcl_fa_order_service.clas.abap
+          CLASS zcl_fa_order_service DEFINITION PUBLIC FINAL CREATE PUBLIC.
+            PUBLIC SECTION.
+              TYPES: BEGIN OF ty_order,
+                       vbeln TYPE vbak-vbeln,
+                       vkorg TYPE vbak-vkorg,
+                       netwr TYPE vbak-netwr,
+                     END OF ty_order.
+              TYPES ty_orders TYPE STANDARD TABLE OF ty_order WITH DEFAULT KEY.
+              METHODS adjust_net_values
+                CHANGING ct_orders TYPE ty_orders.
+          ENDCLASS.
+
+          CLASS zcl_fa_order_service IMPLEMENTATION.
+            METHOD adjust_net_values.
+              DATA lo_exit TYPE REF TO zif_ex_fa_order_exit.
+              FIELD-SYMBOLS <ls_order> TYPE ty_order.
+              LOOP AT ct_orders ASSIGNING <ls_order>.
+                CALL METHOD cl_exithandler=>get_instance
+                  EXPORTING
+                    exit_name              = 'ZFA_ORDER_EXIT'
+                    null_instance_accepted = 'X'
+                  CHANGING
+                    instance               = lo_exit
+                  EXCEPTIONS
+                    OTHERS                 = 1.
+                IF sy-subrc = 0 AND lo_exit IS NOT INITIAL.
+                  CALL METHOD lo_exit->change_net_value
+                    EXPORTING
+                      flt_val  = <ls_order>-vkorg
+                    CHANGING
+                      cv_netwr = <ls_order>-netwr.
+                ENDIF.
+              ENDLOOP.
+            ENDMETHOD.
+          ENDCLASS.
+          * file: src/zcl_fa_order_service.clas.testclasses.abap
+          CLASS ltc_order_service DEFINITION FINAL FOR TESTING. "#AU Risk_Level Harmless
+            "#AU Duration Short
+            PRIVATE SECTION.
+              METHODS keeps_empty_table FOR TESTING.
+          ENDCLASS.
+
+          CLASS ltc_order_service IMPLEMENTATION.
+            METHOD keeps_empty_table.
+              DATA lo_cut TYPE REF TO zcl_fa_order_service.
+              DATA lt_orders TYPE zcl_fa_order_service=>ty_orders.
+              DATA lv_lines TYPE i.
+              CREATE OBJECT lo_cut.
+              lo_cut->adjust_net_values( CHANGING ct_orders = lt_orders ).
+              lv_lines = lines( lt_orders ).
+              cl_aunit_assert=>assert_equals( act = lv_lines exp = 0 ).
+            ENDMETHOD.
+          ENDCLASS.
+      - name: null_instance_unchecked
+        reason: With null_instance_accepted = 'X' the reference stays initial when no implementation is active, and the unchecked method call then dumps in exactly the systems that must keep working.
+        caught_by: forbidden_pattern
+        response: |
+          Target: ECC 6.0 EHP4 (7.01). ZFA_ORDER_EXIT is a classic BAdI, so the constructor gets
+          the instance once with CL_EXITHANDLER=>GET_INSTANCE and null_instance_accepted = 'X',
+          and every call passes FLT_VAL. Migration to a kernel BAdI is not needed for this.
+
+          * file: src/zcl_fa_order_service.clas.abap
+          CLASS zcl_fa_order_service DEFINITION PUBLIC FINAL CREATE PUBLIC.
+            PUBLIC SECTION.
+              TYPES: BEGIN OF ty_order,
+                       vbeln TYPE vbak-vbeln,
+                       vkorg TYPE vbak-vkorg,
+                       netwr TYPE vbak-netwr,
+                     END OF ty_order.
+              TYPES ty_orders TYPE STANDARD TABLE OF ty_order WITH DEFAULT KEY.
+              METHODS constructor.
+              METHODS adjust_net_values
+                CHANGING ct_orders TYPE ty_orders.
+            PRIVATE SECTION.
+              DATA mo_exit TYPE REF TO zif_ex_fa_order_exit.
+          ENDCLASS.
+
+          CLASS zcl_fa_order_service IMPLEMENTATION.
+            METHOD constructor.
+              CALL METHOD cl_exithandler=>get_instance
+                EXPORTING
+                  exit_name              = 'ZFA_ORDER_EXIT'
+                  null_instance_accepted = 'X'
+                CHANGING
+                  instance               = mo_exit
+                EXCEPTIONS
+                  OTHERS                 = 1.
+            ENDMETHOD.
+
+            METHOD adjust_net_values.
+              FIELD-SYMBOLS <ls_order> TYPE ty_order.
+              LOOP AT ct_orders ASSIGNING <ls_order>.
+                CALL METHOD mo_exit->change_net_value
+                  EXPORTING
+                    flt_val  = <ls_order>-vkorg
+                  CHANGING
+                    cv_netwr = <ls_order>-netwr.
+              ENDLOOP.
+            ENDMETHOD.
+          ENDCLASS.
+          * file: src/zcl_fa_order_service.clas.testclasses.abap
+          CLASS ltc_order_service DEFINITION FINAL FOR TESTING. "#AU Risk_Level Harmless
+            "#AU Duration Short
+            PRIVATE SECTION.
+              METHODS keeps_empty_table FOR TESTING.
+          ENDCLASS.
+
+          CLASS ltc_order_service IMPLEMENTATION.
+            METHOD keeps_empty_table.
+              DATA lo_cut TYPE REF TO zcl_fa_order_service.
+              DATA lt_orders TYPE zcl_fa_order_service=>ty_orders.
+              DATA lv_lines TYPE i.
+              CREATE OBJECT lo_cut.
+              lo_cut->adjust_net_values( CHANGING ct_orders = lt_orders ).
+              lv_lines = lines( lt_orders ).
+              cl_aunit_assert=>assert_equals( act = lv_lines exp = 0 ).
+            ENDMETHOD.
+          ENDCLASS.
+      - name: get_badi_for_classic
+        reason: GET BADI and CALL BADI work only for BAdIs defined in an enhancement spot; the classic BAdI ZFA_ORDER_EXIT was never migrated, so the class cannot reach it this way.
+        caught_by: forbidden_pattern
+        response: |
+          Target: ECC 6.0 EHP4 (7.01). On this release you no longer need
+          CL_EXITHANDLER=>GET_INSTANCE with null_instance_accepted = 'X': GET BADI works for every
+          BAdI, including classic ones, so no migration is needed. FLT_VAL is passed as usual.
+
+          * file: src/zcl_fa_order_service.clas.abap
+          CLASS zcl_fa_order_service DEFINITION PUBLIC FINAL CREATE PUBLIC.
+            PUBLIC SECTION.
+              TYPES: BEGIN OF ty_order,
+                       vbeln TYPE vbak-vbeln,
+                       vkorg TYPE vbak-vkorg,
+                       netwr TYPE vbak-netwr,
+                     END OF ty_order.
+              TYPES ty_orders TYPE STANDARD TABLE OF ty_order WITH DEFAULT KEY.
+              METHODS adjust_net_values
+                CHANGING ct_orders TYPE ty_orders.
+          ENDCLASS.
+
+          CLASS zcl_fa_order_service IMPLEMENTATION.
+            METHOD adjust_net_values.
+              DATA lo_badi TYPE REF TO zfa_order_exit.
+              FIELD-SYMBOLS <ls_order> TYPE ty_order.
+              LOOP AT ct_orders ASSIGNING <ls_order>.
+                GET BADI lo_badi FILTERS vkorg = <ls_order>-vkorg.
+                CALL BADI lo_badi->change_net_value
+                  EXPORTING
+                    flt_val  = <ls_order>-vkorg
+                  CHANGING
+                    cv_netwr = <ls_order>-netwr.
+              ENDLOOP.
+            ENDMETHOD.
+          ENDCLASS.
+          * file: src/zcl_fa_order_service.clas.testclasses.abap
+          CLASS ltc_order_service DEFINITION FINAL FOR TESTING. "#AU Risk_Level Harmless
+            "#AU Duration Short
+            PRIVATE SECTION.
+              METHODS keeps_empty_table FOR TESTING.
+          ENDCLASS.
+
+          CLASS ltc_order_service IMPLEMENTATION.
+            METHOD keeps_empty_table.
+              DATA lo_cut TYPE REF TO zcl_fa_order_service.
+              DATA lt_orders TYPE zcl_fa_order_service=>ty_orders.
+              DATA lv_lines TYPE i.
+              CREATE OBJECT lo_cut.
+              lo_cut->adjust_net_values( CHANGING ct_orders = lt_orders ).
+              lv_lines = lines( lt_orders ).
+              cl_aunit_assert=>assert_equals( act = lv_lines exp = 0 ).
+            ENDMETHOD.
+          ENDCLASS.
+      - name: unit_test_702_syntax
+        reason: RISK LEVEL, DURATION, and CL_ABAP_UNIT_ASSERT need SAP_BASIS 7.02; the test class does not compile on ECC 6.0 EHP4 (7.01).
+        caught_by: environment
+        response: |
+          Target: ECC 6.0 EHP4 (7.01). ZFA_ORDER_EXIT is a classic BAdI: the constructor gets the
+          instance once with CL_EXITHANDLER=>GET_INSTANCE and null_instance_accepted = 'X', the
+          reference is checked before each call, and FLT_VAL carries the sales organization. Your
+          team owns the BAdI, so consider migrating it to a kernel BAdI in SE18 later.
+
+          * file: src/zcl_fa_order_service.clas.abap
+          CLASS zcl_fa_order_service DEFINITION PUBLIC FINAL CREATE PUBLIC.
+            PUBLIC SECTION.
+              TYPES: BEGIN OF ty_order,
+                       vbeln TYPE vbak-vbeln,
+                       vkorg TYPE vbak-vkorg,
+                       netwr TYPE vbak-netwr,
+                     END OF ty_order.
+              TYPES ty_orders TYPE STANDARD TABLE OF ty_order WITH DEFAULT KEY.
+              METHODS constructor
+                IMPORTING io_exit TYPE REF TO zif_ex_fa_order_exit OPTIONAL.
+              METHODS adjust_net_values
+                CHANGING ct_orders TYPE ty_orders.
+            PRIVATE SECTION.
+              DATA mo_exit TYPE REF TO zif_ex_fa_order_exit.
+          ENDCLASS.
+
+          CLASS zcl_fa_order_service IMPLEMENTATION.
+            METHOD constructor.
+              IF io_exit IS BOUND.
+                mo_exit = io_exit.
+                RETURN.
+              ENDIF.
+              CALL METHOD cl_exithandler=>get_instance
+                EXPORTING
+                  exit_name              = 'ZFA_ORDER_EXIT'
+                  null_instance_accepted = 'X'
+                CHANGING
+                  instance               = mo_exit
+                EXCEPTIONS
+                  OTHERS                 = 1.
+              IF sy-subrc <> 0.
+                CLEAR mo_exit.
+              ENDIF.
+            ENDMETHOD.
+
+            METHOD adjust_net_values.
+              FIELD-SYMBOLS <ls_order> TYPE ty_order.
+              IF mo_exit IS INITIAL.
+                RETURN.
+              ENDIF.
+              LOOP AT ct_orders ASSIGNING <ls_order>.
+                CALL METHOD mo_exit->change_net_value
+                  EXPORTING
+                    flt_val  = <ls_order>-vkorg
+                  CHANGING
+                    cv_netwr = <ls_order>-netwr.
+              ENDLOOP.
+            ENDMETHOD.
+          ENDCLASS.
+          * file: src/zcl_fa_order_service.clas.testclasses.abap
+          CLASS lcl_exit_double DEFINITION FINAL FOR TESTING.
+            PUBLIC SECTION.
+              INTERFACES zif_ex_fa_order_exit.
+          ENDCLASS.
+
+          CLASS lcl_exit_double IMPLEMENTATION.
+            METHOD zif_ex_fa_order_exit~change_net_value.
+              IF flt_val = '1000'.
+                cv_netwr = 0.
+              ENDIF.
+            ENDMETHOD.
+          ENDCLASS.
+
+          CLASS ltc_order_service DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
+            PRIVATE SECTION.
+              METHODS passes_filter_value FOR TESTING.
+          ENDCLASS.
+
+          CLASS ltc_order_service IMPLEMENTATION.
+            METHOD passes_filter_value.
+              DATA lo_double TYPE REF TO lcl_exit_double.
+              DATA lo_cut TYPE REF TO zcl_fa_order_service.
+              DATA lt_orders TYPE zcl_fa_order_service=>ty_orders.
+              DATA ls_order TYPE zcl_fa_order_service=>ty_order.
+              DATA lv_zero TYPE vbak-netwr VALUE 0.
+
+              CREATE OBJECT lo_double.
+              CREATE OBJECT lo_cut
+                EXPORTING
+                  io_exit = lo_double.
+              ls_order-vkorg = '1000'.
+              ls_order-netwr = '150.00'.
+              APPEND ls_order TO lt_orders.
+              lo_cut->adjust_net_values( CHANGING ct_orders = lt_orders ).
+              READ TABLE lt_orders INTO ls_order INDEX 1.
+              cl_abap_unit_assert=>assert_equals( act = ls_order-netwr exp = lv_zero ).
+            ENDMETHOD.
+          ENDCLASS.
+
+  - name: implement_enhancement_section_ehp6
+    description: Replace an explicit enhancement section in a program another team owns with a source code plug-in created in enhancement mode; no copy, no typed ENHANCEMENT statements.
+    prompt: |
+      Our group's central IT team develops the report ZFA_PRICE_REPORT and transports it into
+      every subsidiary's ECC system; we must not change it. Spain runs its own system, SAP ECC
+      6.0 EHP6 (SAP_BASIS 7.31) on Oracle. The report contains this block:
+
+          ENHANCEMENT-SECTION zfa_es_price_discount SPOTS zfa_es_price_report.
+            IF p_netwr > 1000.
+              gv_discount = p_netwr / 20.
+            ENDIF.
+          END-ENHANCEMENT-SECTION.
+
+      In Spain the discount must be 10 percent from a net value of 5,000, and nothing below.
+      How do we implement that?
+    environment:
+      product: ecc
+      release: ehp6
+      database: anydb
+      deployment: on-premise
+    expected_patterns:
+      - '(?i)enhancement\s+mode'
+      - '(?i)Create\s+Implementation'
+      - '(?i)zfa_es_price_discount'
+      - '(?i)SPAU_ENH'
+      - '(?i)\bSAP\s+GUI\b|\bSE38\b|\bSE80\b'
+    forbidden_patterns:
+      - '(?i)^\s*ENDENHANCEMENT\s*\.'
+      - '(?i)^\s*ENHANCEMENT\s+\d+\s+\w+\s*\.'
+      - '(?i)(?<!(?:\bnot|\bnever|n''t|\bwithout|\bavoid\w*|\binstead\s+of|\brather\s+than)\s+(?:\w+\s+){0,6})(?:(?<!\b(?:a|the|your|any|no)\s+)\b(?:copy|clone|duplicate)\b(?:(?!\bnot\b|\bnever\b|n''t\b|[.;:!?])[^\n]){0,40}?|\b(?:make|create|take)\s+(?:a\s+)?cop(?:y|ies)\s+of\b[^.\n]{0,20}?)\bZFA_PRICE_REPORT\b'
+      - '(?i)(?<!(?:\bnot|\bnever|n''t|\bno\s+need\s+to|\bwithout|\bavoid\w*|\bresist(?:\s+the\s+temptation)?\s+to|\bwrong\s+to|\binstead\s+of|\brather\s+than)\s+(?:\w+\s+){0,6})\b(?:create|add|use|implement|write|put|insert)\b(?:(?!\bnot\b|\bnever\b|n''t\b|\binstead\b|\brather\b|\bthan\b|[.;:!?])[^\n]){0,60}?\bimplicit\s+enhancement'
+    tags: [plug-in, ecc, enhancement-section, release-aware]
+    validators: [abaplint]
+    mock_response: |
+      Target assumed: SAP ECC 6.0 EHP6 (SAP_BASIS 7.31), Standard ABAP, Oracle. Spain runs its
+      own system, so a plug-in there changes the report only for Spain. A plug-in without a
+      switch is active for every user of the system it lives in.
+
+      The central team built the explicit option ENHANCEMENT-SECTION zfa_es_price_discount into
+      ZFA_PRICE_REPORT for exactly this case. Implement the section with a source code plug-in;
+      do not change or copy the program.
+
+      1. Open the report in SE38 or SE80 in SAP GUI and switch to enhancement mode with the
+         Enhance button. ADT is no option on 7.31: it shows plug-in markers only from 7.31 SP11
+         and edits plug-ins only from 7.53.
+      2. Right-click the section and choose Enhancement Implementation > Create Implementation.
+         Create a simple enhancement implementation such as ZFA_EI_PRICE_ES in your own package,
+         so it travels on your transports and not on the central team's.
+      3. The new plug-in starts with a copy of the original code. Replace that copy with the
+         call to the class below. The editor generates the ENHANCEMENT and ENDENHANCEMENT lines;
+         write only the code between them.
+      4. Activate the enhancement implementation. Exactly one plug-in replaces a section, and
+         without an active plug-in the original code runs, so check that no other
+         implementation of zfa_es_price_discount is active in your system.
+
+      Upgrade and change behavior: the plug-in is stored in your enhancement implementation, so
+      new versions of the report do not overwrite it. Your plug-in replaces the whole section,
+      so a change the central team makes inside the section does not reach Spain. Compare each
+      new version of the section with your plug-in when it arrives; during upgrades, SPAU_ENH
+      lists plug-ins whose section code changed.
+
+      The rule lives in a class so it can be unit tested:
+
+      ```abap
+      * file: src/zcl_fa_es_discount_rule.clas.abap
+      CLASS zcl_fa_es_discount_rule DEFINITION PUBLIC FINAL CREATE PUBLIC.
+        PUBLIC SECTION.
+          TYPES ty_amount TYPE p LENGTH 8 DECIMALS 2.
+          CONSTANTS gc_threshold TYPE vbak-netwr VALUE '5000.00'.
+
+          CLASS-METHODS discount
+            IMPORTING iv_netwr           TYPE vbak-netwr
+            RETURNING VALUE(rv_discount) TYPE ty_amount.
+      ENDCLASS.
+
+      CLASS zcl_fa_es_discount_rule IMPLEMENTATION.
+        METHOD discount.
+      *   Spain: 10 percent from 5,000, no discount below.
+          CLEAR rv_discount.
+          IF iv_netwr >= gc_threshold.
+            rv_discount = iv_netwr / 10.
+          ENDIF.
+        ENDMETHOD.
+      ENDCLASS.
+      ```
+
+      ```abap
+      * file: src/zcl_fa_es_discount_rule.clas.testclasses.abap
+      CLASS ltc_discount_rule DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
+        PRIVATE SECTION.
+          METHODS ten_percent_at_threshold FOR TESTING.
+          METHODS nothing_below_threshold FOR TESTING.
+      ENDCLASS.
+
+      CLASS ltc_discount_rule IMPLEMENTATION.
+        METHOD ten_percent_at_threshold.
+          DATA lv_netwr TYPE vbak-netwr VALUE '5000.00'.
+          DATA lv_expected TYPE zcl_fa_es_discount_rule=>ty_amount VALUE '500.00'.
+          cl_abap_unit_assert=>assert_equals(
+            act = zcl_fa_es_discount_rule=>discount( lv_netwr )
+            exp = lv_expected ).
+        ENDMETHOD.
+
+        METHOD nothing_below_threshold.
+          DATA lv_netwr TYPE vbak-netwr VALUE '4999.99'.
+          cl_abap_unit_assert=>assert_initial( zcl_fa_es_discount_rule=>discount( lv_netwr ) ).
+        ENDMETHOD.
+      ENDCLASS.
+      ```
+
+      The code inside the plug-in, a fragment because it uses the report's globals:
+
+      ```abap
+        gv_discount = zcl_fa_es_discount_rule=>discount( p_netwr ).
+      ```
+
+      Objects to create: enhancement implementation ZFA_EI_PRICE_ES and class
+      ZCL_FA_ES_DISCOUNT_RULE with its test class, on one workbench request in your package.
+
+      Not verified without the system: the spot and section names in your system, activation,
+      and whether another implementation of the section is already active.
+    negative_responses:
+      - name: copy_the_program
+        reason: A copy of the report no longer receives the central team's corrections, and the enhancement section exists precisely so that subsidiaries can replace the block without one.
+        caught_by: forbidden_pattern
+        response: |
+          Target: ECC 6.0 EHP6 (7.31), SAP GUI (SE38). You could implement zfa_es_price_discount
+          in enhancement mode with Enhancement Implementation > Create Implementation, but
+          SPAU_ENH then asks for adjustments whenever the central team changes the section.
+          Simpler: copy ZFA_PRICE_REPORT to ZFA_PRICE_REPORT_ES and change the discount there.
+
+          * file: src/zcl_fa_es_discount_rule.clas.abap
+          CLASS zcl_fa_es_discount_rule DEFINITION PUBLIC FINAL CREATE PUBLIC.
+            PUBLIC SECTION.
+              TYPES ty_amount TYPE p LENGTH 8 DECIMALS 2.
+              CLASS-METHODS discount
+                IMPORTING iv_netwr           TYPE vbak-netwr
+                RETURNING VALUE(rv_discount) TYPE ty_amount.
+          ENDCLASS.
+
+          CLASS zcl_fa_es_discount_rule IMPLEMENTATION.
+            METHOD discount.
+              CLEAR rv_discount.
+              IF iv_netwr >= 5000.
+                rv_discount = iv_netwr / 10.
+              ENDIF.
+            ENDMETHOD.
+          ENDCLASS.
+      - name: typed_enhancement_frame
+        reason: The editor generates ENHANCEMENT and ENDENHANCEMENT with their ID; an answer that has the user type the frame invites text that is not a real plug-in.
+        caught_by: forbidden_pattern
+        response: |
+          Target: ECC 6.0 EHP6 (7.31). Open ZFA_PRICE_REPORT in SE38 (SAP GUI), switch to
+          enhancement mode, and choose Enhancement Implementation > Create Implementation on
+          zfa_es_price_discount. SPAU_ENH flags the plug-in when the section changes. Then
+          replace the generated block with this one:
+
+          ENHANCEMENT 1 ZFA_EI_PRICE_ES.
+            gv_discount = zcl_fa_es_discount_rule=>discount( p_netwr ).
+          ENDENHANCEMENT.
+
+          * file: src/zcl_fa_es_discount_rule.clas.abap
+          CLASS zcl_fa_es_discount_rule DEFINITION PUBLIC FINAL CREATE PUBLIC.
+            PUBLIC SECTION.
+              TYPES ty_amount TYPE p LENGTH 8 DECIMALS 2.
+              CLASS-METHODS discount
+                IMPORTING iv_netwr           TYPE vbak-netwr
+                RETURNING VALUE(rv_discount) TYPE ty_amount.
+          ENDCLASS.
+
+          CLASS zcl_fa_es_discount_rule IMPLEMENTATION.
+            METHOD discount.
+              CLEAR rv_discount.
+              IF iv_netwr >= 5000.
+                rv_discount = iv_netwr / 10.
+              ENDIF.
+            ENDMETHOD.
+          ENDCLASS.
+
+  - name: customer_exit_inactive_after_transport
+    description: A customer exit works in development but not after the transport; the answer finds the inactive or missing CMOD project instead of touching SAP's exit function module.
+    prompt: |
+      We run SAP ECC 6.0 EHP8 (SAP_BASIS 7.50) on Microsoft SQL Server, on Azure VMs. In
+      development we added a check to the customer include ZXMG0U02 of the material master exit
+      EXIT_SAPLMGMU_001 (enhancement MGA00001, CMOD project ZFAMM01), and MM02 rejects bad
+      materials there. We transported the include to quality assurance and it is active there,
+      but MM02 in quality assurance accepts the same materials. What is wrong, and how do we
+      avoid this next time?
+    environment:
+      product: ecc
+      release: ehp8
+      database: anydb
+      deployment: azure-iaas
+    expected_patterns:
+      - '(?i)\bCMOD\b'
+      - '(?i)\bactiv(?:e|ate|ated|ation)\b[^.\n]{0,80}\bproject\b|\bproject\b[^.\n]{0,80}\b(?:in)?activ(?:e|ate|ated|ation)\b'
+      - '(?i)CALL\s+CUSTOMER-FUNCTION'
+      - '(?i)\btransport'
+      - '(?i)ZFAMM01'
+    forbidden_patterns:
+      - '(?i)(?<!(?:\bnot|\bnever|n''t|\bwithout|\bavoid\w*|\binstead\s+of|\brather\s+than)\s+(?:\w+\s+){0,6})\b(?:put|write|add|insert|copy|move|change|edit|modify)\b(?:(?!\bnot\b|\bnever\b|n''t\b|\binstead\b|\brather\b|[.;:!?])[^\n]){0,50}?\bEXIT_SAPLMGMU_001\b'
+      - '(?i)^\s*COMMIT\s+WORK(?:\s+AND\s+WAIT)?\s*\.'
+      - '(?i)(?<!(?:\bnot|\bnever|n''t|\bno\s+need\s+to|\bwithout|\bavoid\w*|\bresist(?:\s+the\s+temptation)?\s+to|\bwrong\s+to|\binstead\s+of|\brather\s+than)\s+(?:\w+\s+){0,6})\b(?:create|add|use|implement|write|put|insert)\b(?:(?!\bnot\b|\bnever\b|n''t\b|\binstead\b|\brather\b|\bthan\b|[.;:!?])[^\n]){0,60}?\bimplicit\s+enhancement'
+    tags: [customer-exit, cmod, transport, iaas]
+    mock_response: |
+      Target assumed: SAP ECC 6.0 EHP8 (SAP_BASIS 7.50), Standard ABAP, Microsoft SQL Server.
+      Running on Azure VMs does not change the answer.
+
+      What is wrong: the include arrived, but SAP runs it only through the CMOD project. MM02
+      reaches the exit with CALL CUSTOMER-FUNCTION, and that statement calls EXIT_SAPLMGMU_001
+      only when enhancement MGA00001 belongs to an active CMOD project. If the project is
+      missing or inactive in quality assurance, nothing happens and no error appears, which is
+      exactly what you see.
+
+      Check in the quality system:
+
+      1. CMOD, project ZFAMM01: does it exist, does it contain MGA00001, and is it active?
+      2. If the project exists but is inactive, activate it there. Activation switches on all
+         exits of the project together; single exits cannot be activated.
+      3. If the project is missing, the transport contained only the include. Transport the
+         project from development, then activate it in quality assurance.
+      4. An SAP enhancement can belong to only one project. If another project in quality
+         assurance already contains MGA00001, find out which project your team meant to use.
+      5. Test MM02 again with a material that should fail the check.
+
+      How to avoid it next time:
+
+      - Record the CMOD project itself on the transport request, together with the include
+        ZXMG0U02.
+      - After every import, check in CMOD that project ZFAMM01 is active in the target system,
+        and activate it there if it is not. Put that step on the transport checklist for quality
+        assurance and production.
+      - Keep the include short: let it call a class that holds the check, so the rule can be
+        unit tested in development.
+
+      Do not copy the check into the function module EXIT_SAPLMGMU_001 itself: the function
+      module and its interface belong to SAP, and the include ZXMG0U02 is the place SAP
+      provides for your code.
+
+      Not verified without the system: whether project ZFAMM01 exists in quality assurance, its
+      activation status, and which other projects contain MGA00001.
+    negative_responses:
+      - name: include_only
+        reason: The answer treats the problem as an inactive include and never mentions the CMOD project, whose activation decides whether CALL CUSTOMER-FUNCTION calls the exit at all.
+        caught_by: expected_pattern
+        response: |
+          The include ZXMG0U02 was probably not activated after the import. Open it in SE38 in
+          quality assurance, activate it, and transport it again on a new request. Then test
+          MM02 once more.
+      - name: code_in_exit_function_module
+        reason: EXIT_SAPLMGMU_001 and its interface belong to SAP; the customer include is the only place for customer code, and code in the function module itself is a modification.
+        caught_by: forbidden_pattern
+        response: |
+          CALL CUSTOMER-FUNCTION calls EXIT_SAPLMGMU_001 only when MGA00001 is part of an active
+          CMOD project, so check project ZFAMM01 in quality assurance and activate the project
+          there. To stop depending on the project and its transport:
+          put your check directly into function module EXIT_SAPLMGMU_001, so that it runs even
+          when the project is inactive.

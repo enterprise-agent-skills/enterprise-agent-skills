@@ -1,0 +1,43 @@
+name: MCP server proposal
+description: Propose adding a vendor-published MCP server to mcp/servers.yaml.
+title: "MCP server: <name>"
+labels: ["mcp-server", "needs-triage"]
+body:
+  - type: input
+    id: name
+    attributes:
+      label: Server name and publisher
+    validations:
+      required: true
+  - type: input
+    id: source
+    attributes:
+      label: Source repository or official page (https)
+    validations:
+      required: true
+  - type: input
+    id: package
+    attributes:
+      label: Package and exact version, or remote URL
+    validations:
+      required: true
+  - type: dropdown
+    id: auth
+    attributes:
+      label: Credentials needed
+      options: ["None", "Interactive sign-in", "API keys or system credentials"]
+    validations:
+      required: true
+  - type: textarea
+    id: tools
+    attributes:
+      label: Tools it exposes and whether any of them write data
+    validations:
+      required: true
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Confirmation
+      options:
+        - label: The product vendor publishes and maintains this server.
+          required: true

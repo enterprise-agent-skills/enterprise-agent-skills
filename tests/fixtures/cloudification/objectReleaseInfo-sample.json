@@ -1,0 +1,107 @@
+{
+  "formatVersion": "1",
+  "objectReleaseInfo": [
+    {
+      "tadirObject": "TABL",
+      "tadirObjName": "BKPF",
+      "objectType": "TABL",
+      "objectKey": "BKPF",
+      "softwareComponent": "SAPSCORE",
+      "applicationComponent": "FI-GL-2CL",
+      "state": "notToBeReleased",
+      "successorClassification": "oneObject",
+      "successors": [
+        {
+          "tadirObject": "DDLS",
+          "tadirObjName": "I_JOURNALENTRY",
+          "objectType": "CDS_STOB",
+          "objectKey": "I_JOURNALENTRY"
+        }
+      ]
+    },
+    {
+      "tadirObject": "TABL",
+      "tadirObjName": "KNA1",
+      "objectType": "TABL",
+      "objectKey": "KNA1",
+      "softwareComponent": "SAPSCORE",
+      "applicationComponent": "LO-MD-BP-CM-2CL",
+      "state": "notToBeReleased",
+      "successorClassification": "oneObject",
+      "successors": [
+        {
+          "tadirObject": "DDLS",
+          "tadirObjName": "I_CUSTOMER",
+          "objectType": "CDS_STOB",
+          "objectKey": "I_CUSTOMER"
+        }
+      ]
+    },
+    {
+      "tadirObject": "TABL",
+      "tadirObjName": "VBAK",
+      "objectType": "TABL",
+      "objectKey": "VBAK",
+      "softwareComponent": "SAPSCORE",
+      "applicationComponent": "SD-SLS-2CL",
+      "state": "notToBeReleased",
+      "successorClassification": "oneObject",
+      "successors": [
+        {
+          "tadirObject": "DDLS",
+          "tadirObjName": "I_SALESDOCUMENT",
+          "objectType": "CDS_STOB",
+          "objectKey": "I_SALESDOCUMENT"
+        }
+      ]
+    },
+    {
+      "tadirObject": "CLAS",
+      "tadirObjName": "CL_ABAP_UNIT_ASSERT",
+      "objectType": "CLAS",
+      "objectKey": "CL_ABAP_UNIT_ASSERT",
+      "softwareComponent": "SAP_BASIS",
+      "applicationComponent": "BC-DWB-TOO-UT",
+      "state": "released",
+      "successorClassification": ""
+    },
+    {
+      "tadirObject": "DDLS",
+      "tadirObjName": "I_SALESDOCUMENT",
+      "objectType": "CDS_STOB",
+      "objectKey": "I_SALESDOCUMENT",
+      "softwareComponent": "SAPSCORE",
+      "applicationComponent": "SD-SLS-2CL",
+      "state": "released",
+      "successorClassification": ""
+    },
+    {
+      "tadirObject": "DDLS",
+      "tadirObjName": "I_SALESORDER",
+      "objectType": "CDS_STOB",
+      "objectKey": "I_SALESORDER",
+      "softwareComponent": "SAPSCORE",
+      "applicationComponent": "SD-SLS-SO-2CL",
+      "state": "released",
+      "successorClassification": ""
+    },
+    {
+      "tadirObject": "FUGR",
+      "tadirObjName": "0001_BAPI",
+      "objectType": "FUNC",
+      "objectKey": "BAPI_PROCORD_GET_DETAIL",
+      "softwareComponent": "SAPSCORE",
+      "applicationComponent": "PP-SFC-2CL",
+      "state": "notToBeReleased",
+      "successorClassification": "oneObject",
+      "successors": [
+        {
+          "tadirObject": "DDLS",
+          "tadirObjName": "I_MANUFACTURINGORDER",
+          "objectType": "CDS_STOB",
+          "objectKey": "I_MANUFACTURINGORDER"
+        }
+      ]
+    }
+  ]
+}

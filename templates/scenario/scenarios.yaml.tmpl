@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=../../../schemas/skill-scenarios.schema.json
+# Scenarios for {{name}}. See docs/testing.md for what each field does.
+
+config:
+  model: claude-sonnet-4.6
+  max_tokens: 4000
+  temperature: 0.2
+
+scenarios:
+  - name: basic_usage
+    description: "{{TODO: what this scenario proves}}"
+    prompt: |
+      {{TODO: a realistic request, phrased the way a user would type it, without naming the skill}}
+    expected_patterns:
+      - "{{TODO: regex that a correct answer must contain}}"
+    forbidden_patterns:
+      - "{{TODO: regex that catches a known mistake}}"
+    tags: [basic]
+    # validators: [abaplint | apex | python | javascript | json | yaml]
+    mock_response: |
+      {{TODO: a complete reference answer. Start each file with a marker line such as
+      "// file: path/to/File.ext" so validators can parse it.}}
+    negative_responses:
+      - name: common_mistake
+        reason: "{{TODO: why this answer is wrong}}"
+        caught_by: forbidden_pattern
+        response: |
+          {{TODO: a realistic wrong answer that the forbidden pattern above must catch}}

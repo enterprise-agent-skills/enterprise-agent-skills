@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "plugin-source.schema.json",
+  "title": "Plugin source manifest (plugins/<name>/plugin.yaml)",
+  "description": "Authoring source of truth for a plugin. Platform manifests (plugin.json, .claude-plugin/plugin.json, .cursor-plugin/plugin.json, gemini-extension.json, mcp.json, .mcp.json) are generated from this file.",
+  "type": "object",
+  "required": ["name", "display_name", "version", "description", "vendor", "category", "keywords", "maturity"],
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+      "description": "Permanent identifier. Must equal the folder name. Never rename after release."
+    },
+    "display_name": { "type": "string", "minLength": 3, "maxLength": 80 },
+    "version": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(-[0-9A-Za-z.-]+)?$"
+    },
+    "description": { "type": "string", "minLength": 40, "maxLength": 1024 },
+    "long_description": {
+      "type": "string",
+      "description": "Optional Markdown paragraph inserted into the generated plugin README."
+    },
+    "vendor": { "type": "string" },
+    "category": { "type": "string" },
+    "keywords": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 20,
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" }
+    },
+    "maturity": { "type": "string" },
+    "author": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "url": { "type": "string", "pattern": "^https://" },
+        "email": { "type": "string" }
+      }
+    },
+    "mcp_servers": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+      "description": "IDs from mcp/servers.yaml. Only servers with bundle_policy 'bundle' may be listed."
+    },
+    "upstream": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["microsoft_skills"],
+      "properties": {
+        "microsoft_skills": {
+          "type": "string",
+          "enum": ["not-applicable", "candidate", "submitted", "accepted"],
+          "description": "Eligibility for contribution to github.com/microsoft/skills. Only 'candidate' or later may be exported."
+        },
+        "notes": { "type": "string" }
+      }
+    }
+  }
+}

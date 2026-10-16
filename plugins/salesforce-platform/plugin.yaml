@@ -1,0 +1,17 @@
+name: salesforce-platform
+display_name: Salesforce Platform Development
+version: 0.1.0
+description: >-
+  Skills for Salesforce Platform development with Apex: bulk-safe trigger handlers, recursion
+  control, user-mode data access, and tests that cover full 200-record trigger batches.
+long_description: >-
+  Every Apex sample in the skill and its tests is parsed with the open-source Apex parser from
+  apex-dev-tools. Deployment and test execution need a Salesforce org; the Salesforce DX MCP
+  server is documented in mcp/servers.yaml for users who want agent access to a scratch org.
+vendor: salesforce
+category: development
+keywords: [salesforce, apex, triggers, soql, governor-limits, unit-testing, sfdx]
+maturity: beta
+upstream:
+  microsoft_skills: not-applicable
+  notes: Salesforce-specific content is outside the scope of github.com/microsoft/skills.

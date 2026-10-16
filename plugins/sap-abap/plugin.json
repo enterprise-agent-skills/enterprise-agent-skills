@@ -1,0 +1,26 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "sap-abap",
+  "version": "0.2.0",
+  "description": "Skills for SAP ABAP development across customer-managed and cloud systems: Standard ABAP on SAP ECC 6.0, SAP NetWeaver AS ABAP, and SAP S/4HANA (on premises or on Azure, AWS, or Google Cloud VMs), enhancements and integration, plus ABAP Cloud with RAP and clean core assessments.",
+  "author": {
+    "name": "Frontier Agent Skills and Plugins contributors",
+    "url": "https://github.com/frontier-agent-skills/frontier-agent-skills-plugins"
+  },
+  "homepage": "https://github.com/frontier-agent-skills/frontier-agent-skills-plugins/tree/main/plugins/sap-abap",
+  "repository": "https://github.com/frontier-agent-skills/frontier-agent-skills-plugins",
+  "license": "MIT",
+  "keywords": [
+    "sap",
+    "abap",
+    "ecc",
+    "netweaver",
+    "s4hana",
+    "abap-cloud",
+    "rap",
+    "enhancements",
+    "idoc",
+    "odata",
+    "clean-core"
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "abap-language-features.schema.json",
+  "title": "ABAP language features by release (config/abap-language-features.yaml)",
+  "type": "object",
+  "required": ["features"],
+  "additionalProperties": false,
+  "properties": {
+    "features": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "since", "syntax", "older", "checked_by", "test", "source"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+          "name": { "type": "string", "minLength": 3 },
+          "since": {
+            "type": "string",
+            "pattern": "^\\d\\.\\d{2}( SP\\d{2})?$",
+            "description": "First SAP_BASIS release that supports the feature, with the support package for 7.40, for example \"7.02\" or \"7.40 SP08\"."
+          },
+          "syntax": { "type": "string", "description": "Short example shown in the generated table." },
+          "older": { "type": "string", "description": "What to write on releases before `since`." },
+          "checked_by": {
+            "type": "string",
+            "pattern": "^(abaplint|rule:[a-z0-9]+(-[a-z0-9]+)*)$",
+            "description": "abaplint (grammar and syntax check) or a feature rule id from config/sap-environments.yaml."
+          },
+          "validator_from": {
+            "type": "string",
+            "pattern": "^\\d\\.\\d{2}( SP\\d{2})?$",
+            "description": "Only when the offline check accepts the feature later than SAP does: the first release it accepts."
+          },
+          "file": {
+            "type": "string",
+            "pattern": "^[a-z0-9_]+\\.[a-z]+\\.[a-z]+$",
+            "description": "abapGit file name for a non-program source such as a CDS view; the test is then the whole file."
+          },
+          "test": { "type": "string", "description": "Program body after REPORT that uses the feature and nothing newer." },
+          "test_older": { "type": "string", "description": "The same logic without the feature; must pass on the release before `since`." },
+          "source": { "type": "string", "description": "Where the release fact comes from." },
+          "notes": { "type": "string" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "sap-environments.schema.json",
+  "title": "SAP environment registry (config/sap-environments.yaml)",
+  "type": "object",
+  "required": ["products", "deployments", "databases", "grammar_by_sap_basis", "feature_rules"],
+  "additionalProperties": false,
+  "properties": {
+    "products": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "databases", "language_versions", "deployments", "releases"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+          "name": { "type": "string" },
+          "notes": { "type": "string" },
+          "databases": { "type": "array", "minItems": 1, "items": { "enum": ["hana", "anydb"] } },
+          "hana_from_sap_basis": {
+            "type": "string",
+            "pattern": "^\\d+\\.\\d{2}$",
+            "description": "First SAP_BASIS release on which this product runs on SAP HANA."
+          },
+          "language_versions": { "type": "array", "minItems": 1, "items": { "enum": ["standard", "cloud"] } },
+          "cloud_language_from_sap_basis": {
+            "type": "string",
+            "pattern": "^\\d+\\.\\d{2}$",
+            "description": "First SAP_BASIS release on which ABAP for Cloud Development is available for this product."
+          },
+          "deployments": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+          "releases": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["id", "sap_basis"],
+              "additionalProperties": false,
+              "properties": {
+                "id": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+                "name": { "type": "string" },
+                "sap_basis": { "type": "string", "pattern": "^(\\d+\\.\\d{2}|cloud)$" },
+                "notes": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "deployments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name"],
+        "additionalProperties": false,
+        "properties": { "id": { "type": "string" }, "name": { "type": "string" }, "notes": { "type": "string" } }
+      }
+    },
+    "databases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name"],
+        "additionalProperties": false,
+        "properties": { "id": { "enum": ["hana", "anydb"] }, "name": { "type": "string" } }
+      }
+    },
+    "grammar_by_sap_basis": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["sap_basis", "grammar"],
+        "additionalProperties": false,
+        "properties": {
+          "sap_basis": { "type": "string", "pattern": "^\\d+\\.\\d{2}$" },
+          "min_support_package": { "type": "integer", "minimum": 0 },
+          "grammar": { "type": "string", "pattern": "^(v\\d{3}(sp\\d{2})?|Cloud)$" },
+          "note": { "type": "string" }
+        }
+      }
+    },
+    "feature_rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "description", "extensions", "pattern", "source"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+          "description": { "type": "string" },
+          "extensions": { "type": "array", "minItems": 1, "items": { "type": "string", "pattern": "^\\.[a-z0-9]+$" } },
+          "pattern": { "type": "string", "description": "JavaScript regex, matched case-insensitively and in multiline mode." },
+          "min_sap_basis": { "type": "string", "pattern": "^\\d+\\.\\d{2}$" },
+          "min_support_package": { "type": "integer", "minimum": 0 },
+          "requires_database": { "enum": ["hana"] },
+          "requires_language_version": { "enum": ["standard", "cloud"] },
+          "source": { "type": "string", "description": "Where the release fact comes from." }
+        }
+      }
+    }
+  }
+}

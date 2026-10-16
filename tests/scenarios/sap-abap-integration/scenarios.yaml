@@ -1,0 +1,2767 @@
+# yaml-language-server: $schema=../../../schemas/skill-scenarios.schema.json
+# Scenarios for sap-abap-integration. Each scenario names its SAP target; ABAP answers are
+# parsed with abaplint using the grammar of that release (config/sap-environments.yaml).
+# Function module bodies are parsed without the function group XML, so only their syntax is
+# checked; programs and classes also get abaplint's syntax check.
+#
+# Forbidden patterns run on the whole answer, prose and comments included. Patterns for
+# statements are therefore anchored to the start of a line (a statement, not a sentence that
+# names it), and patterns for dynamic SQL tie a built variable to its use in WHERE ( ... ).
+
+config:
+  model: claude-sonnet-4.6
+  max_tokens: 6000
+  temperature: 0.2
+
+# Default target for acceptance-criteria examples without an abap-env directive.
+environment:
+  product: ecc
+  release: ehp8
+  database: anydb
+  deployment: on-premise
+
+scenarios:
+  # A per-row LUW cannot be told apart from one commit after the loop by a regular
+  # expression, because both end a loop and then decide. Live grading checks that property.
+  - name: bapi_commit_per_document_ehp6
+    description: Evaluate RETURN for E and A, then commit or roll back once per business document, mark the staged row in the same LUW, in classic syntax for SAP_BASIS 7.31.
+    prompt: |
+      We run SAP ECC 6.0 EHP6 (SAP_BASIS 7.31) on Oracle. Our team wrote this BAPI-style
+      function module. It saves through the update task and never commits:
+
+        FUNCTION z_fa_order_create
+          IMPORTING
+            VALUE(is_header)   TYPE zfa_s_order_header   " customer, order_date, currency
+            VALUE(iv_testrun)  TYPE testrun DEFAULT space
+          EXPORTING
+            VALUE(ev_order_id) TYPE zfa_order_id
+          TABLES
+            it_items STRUCTURE zfa_s_order_item          " material, quantity, unit
+            return   STRUCTURE bapiret2.
+
+      Write a report that reads the open rows of our staging table ZFA_ORDER_STAGE (fields
+      STAGE_ID, CUSTOMER, ORDER_DATE, CURRENCY, MATERIAL, QUANTITY, UNIT, STATUS; open rows
+      have an empty STATUS) and creates one order per row with this function. A failed row
+      must not stop or undo the others. Offer a test run and show every message per row.
+    environment:
+      product: ecc
+      release: ehp6
+      database: anydb
+      deployment: on-premise
+    expected_patterns:
+      - '(?i)CALL\s+FUNCTION\s+''Z_FA_ORDER_CREATE'''
+      - '(?i)BAPI_TRANSACTION_COMMIT'
+      - '(?i)BAPI_TRANSACTION_ROLLBACK'
+      - '(?i)(type\s*(=|EQ)\s*''A''|\bCA\s*''(EA|AE)''|WHEN\s+''[EA]''\s+OR\s+''[EA]'')'
+      - '(?i)iv_testrun\s*='
+      - '(?i)CALL\s+FUNCTION\s+''[^'']+''\s+IN\s+UPDATE\s+TASK'
+    forbidden_patterns:
+      - '(?i)CALL\s+FUNCTION\s+''(?!BAPI_TRANSACTION_)[^'']+''(?![^.]*\bIN\s+(?:UPDATE\s+TASK|BACKGROUND\s+(?:TASK|UNIT))\b)[^.]*\.\s*(?:(?:\*|")[^\n]*\n\s*)*(?:CALL\s+FUNCTION\s+''BAPI_TRANSACTION_COMMIT''|COMMIT\s+WORK)'
+      - '(?i)^[ \t]*ENDSELECT\b'
+      - '(?i)^[ \t]*WAIT\s+FOR\s+ASYNCHRONOUS\s+TASKS\b'
+    tags: [bapi, commit, ecc, release-aware]
+    validators: [abaplint]
+    mock_response: |
+      Target assumed: SAP ECC 6.0 EHP6, SAP_BASIS 7.31, Oracle. The report uses classic syntax
+      only. Inline declarations, constructor operators, and the new ABAP SQL syntax need
+      SAP_BASIS 7.40 and would not compile here.
+
+      How it works:
+
+      - Each staged row is its own LUW. After Z_FA_ORDER_CREATE returns, the report reads
+        RETURN first. A message of type E (error) or A (abort) means the order failed, and the
+        report calls BAPI_TRANSACTION_ROLLBACK. Otherwise it calls BAPI_TRANSACTION_COMMIT with
+        wait = 'X', which waits until the V1 update has saved the order, and checks the RETURN
+        of the commit as well. The order of the steps matters: a rollback cannot undo what a
+        commit has already passed to the update task.
+      - A failed row rolls back only its own work, so the other rows are not affected.
+      - Right before the commit the report registers Z_FA_ORDER_STAGE_SET_POSTED in the update
+        task. It sets STATUS in the same LUW as the order, so a row is marked only when its
+        order is saved, and the next run skips it.
+      - Each row is locked with ENQUEUE_EZFA_ORDER_STAGE and its status is read again under the
+        lock, so two runs at the same time cannot post the same row.
+      - The staged rows are read into an internal table before the loop, because a commit in
+        a SELECT loop would close the database cursor.
+      - The test run passes iv_testrun = 'X': all checks run, nothing is saved, and the report
+        rolls back afterwards.
+      - Every RETURN line is shown per staging row, including warnings.
+
+      ```abap
+      * file: src/zfa_order_upload.prog.abap
+      REPORT zfa_order_upload.
+
+      TYPES: BEGIN OF ty_log,
+               stage_id TYPE zfa_order_stage-stage_id,
+               order_id TYPE zfa_order_id,
+               type     TYPE bapiret2-type,
+               message  TYPE bapiret2-message,
+             END OF ty_log,
+             tt_log TYPE STANDARD TABLE OF ty_log WITH DEFAULT KEY.
+
+      PARAMETERS p_test AS CHECKBOX DEFAULT 'X'.
+
+      CLASS lcl_order_upload DEFINITION FINAL.
+        PUBLIC SECTION.
+          METHODS run
+            IMPORTING iv_testrun    TYPE c
+            RETURNING value(rt_log) TYPE tt_log.
+        PRIVATE SECTION.
+          METHODS post_order
+            IMPORTING is_stage   TYPE zfa_order_stage
+                      iv_testrun TYPE c
+            CHANGING  ct_log     TYPE tt_log.
+      ENDCLASS.
+
+      CLASS lcl_order_upload IMPLEMENTATION.
+        METHOD run.
+          DATA lt_stage TYPE STANDARD TABLE OF zfa_order_stage WITH DEFAULT KEY.
+          DATA ls_stage TYPE zfa_order_stage.
+          DATA ls_log TYPE ty_log.
+
+          SELECT * FROM zfa_order_stage INTO TABLE lt_stage
+            WHERE status = space
+            ORDER BY stage_id.
+          LOOP AT lt_stage INTO ls_stage.
+            CLEAR ls_log.
+            ls_log-stage_id = ls_stage-stage_id.
+            " Lock the row so that a second run cannot post it at the same time.
+            CALL FUNCTION 'ENQUEUE_EZFA_ORDER_STAGE'
+              EXPORTING
+                stage_id       = ls_stage-stage_id
+              EXCEPTIONS
+                foreign_lock   = 1
+                system_failure = 2
+                OTHERS         = 3.
+            IF sy-subrc <> 0.
+              ls_log-type    = 'W'.
+              ls_log-message = 'Locked by another run; skipped'.
+              APPEND ls_log TO rt_log.
+              CONTINUE.
+            ENDIF.
+            " Read the status again under the lock: another run may have posted the
+            " row after the SELECT above.
+            SELECT SINGLE status FROM zfa_order_stage INTO ls_stage-status
+              WHERE stage_id = ls_stage-stage_id.
+            IF sy-subrc = 0 AND ls_stage-status = space.
+              post_order( EXPORTING is_stage   = ls_stage
+                                    iv_testrun = iv_testrun
+                          CHANGING  ct_log     = rt_log ).
+            ELSE.
+              ls_log-type    = 'I'.
+              ls_log-message = 'Already posted by another run'.
+              APPEND ls_log TO rt_log.
+            ENDIF.
+            CALL FUNCTION 'DEQUEUE_EZFA_ORDER_STAGE'
+              EXPORTING
+                stage_id = ls_stage-stage_id.
+          ENDLOOP.
+        ENDMETHOD.
+
+        METHOD post_order.
+          DATA ls_header TYPE zfa_s_order_header.
+          DATA ls_item TYPE zfa_s_order_item.
+          DATA lt_items TYPE STANDARD TABLE OF zfa_s_order_item WITH DEFAULT KEY.
+          DATA lt_return TYPE STANDARD TABLE OF bapiret2 WITH DEFAULT KEY.
+          DATA ls_return TYPE bapiret2.
+          DATA ls_commit_return TYPE bapiret2.
+          DATA lv_order_id TYPE zfa_order_id.
+          DATA lv_failed TYPE abap_bool.
+          DATA ls_log TYPE ty_log.
+
+          ls_header-customer   = is_stage-customer.
+          ls_header-order_date = is_stage-order_date.
+          ls_header-currency   = is_stage-currency.
+          ls_item-material     = is_stage-material.
+          ls_item-quantity     = is_stage-quantity.
+          ls_item-unit         = is_stage-unit.
+          APPEND ls_item TO lt_items.
+
+          CALL FUNCTION 'Z_FA_ORDER_CREATE'
+            EXPORTING
+              is_header   = ls_header
+              iv_testrun  = iv_testrun
+            IMPORTING
+              ev_order_id = lv_order_id
+            TABLES
+              it_items    = lt_items
+              return      = lt_return.
+
+          " E (error) and A (abort) mean failure. An empty RETURN means success.
+          LOOP AT lt_return INTO ls_return WHERE type = 'E' OR type = 'A'.
+            lv_failed = abap_true.
+            EXIT.
+          ENDLOOP.
+
+          IF lv_failed = abap_true OR iv_testrun = 'X'.
+            CALL FUNCTION 'BAPI_TRANSACTION_ROLLBACK'.
+          ELSE.
+            " Same LUW as the order: the row is marked only if the order is saved.
+            CALL FUNCTION 'Z_FA_ORDER_STAGE_SET_POSTED' IN UPDATE TASK
+              EXPORTING
+                iv_stage_id = is_stage-stage_id.
+            CALL FUNCTION 'BAPI_TRANSACTION_COMMIT'
+              EXPORTING
+                wait   = 'X'
+              IMPORTING
+                return = ls_commit_return.
+            IF ls_commit_return-type = 'E' OR ls_commit_return-type = 'A'.
+              APPEND ls_commit_return TO lt_return.
+            ENDIF.
+          ENDIF.
+
+          " Keep every message, not only the first one.
+          LOOP AT lt_return INTO ls_return.
+            CLEAR ls_log.
+            ls_log-stage_id = is_stage-stage_id.
+            ls_log-order_id = lv_order_id.
+            ls_log-type     = ls_return-type.
+            ls_log-message  = ls_return-message.
+            APPEND ls_log TO ct_log.
+          ENDLOOP.
+        ENDMETHOD.
+      ENDCLASS.
+
+      DATA go_upload TYPE REF TO lcl_order_upload.
+      DATA gt_log TYPE tt_log.
+      DATA go_alv TYPE REF TO cl_salv_table.
+      DATA gx_salv TYPE REF TO cx_salv_msg.
+
+      START-OF-SELECTION.
+        CREATE OBJECT go_upload.
+        gt_log = go_upload->run( p_test ).
+        TRY.
+            cl_salv_table=>factory( IMPORTING r_salv_table = go_alv
+                                    CHANGING  t_table      = gt_log ).
+            go_alv->display( ).
+          CATCH cx_salv_msg INTO gx_salv.
+            MESSAGE gx_salv TYPE 'E'.
+        ENDTRY.
+      ```
+
+      Create these objects as well: the lock object EZFA_ORDER_STAGE on ZFA_ORDER_STAGE (SE11),
+      which generates ENQUEUE_EZFA_ORDER_STAGE and DEQUEUE_EZFA_ORDER_STAGE, and the update
+      module below (SE37, processing type Update Module, start immediately), so that it runs
+      in the same V1 update as the order.
+
+      ```abap
+      * file: src/zfa_order_upd.fugr.z_fa_order_stage_set_posted.abap
+      FUNCTION z_fa_order_stage_set_posted.
+      *"----------------------------------------------------------------------
+      *"*"Local Interface:
+      *"  IMPORTING
+      *"     VALUE(IV_STAGE_ID) TYPE  ZFA_ORDER_STAGE-STAGE_ID
+      *"----------------------------------------------------------------------
+        UPDATE zfa_order_stage SET status = 'P'
+          WHERE stage_id = iv_stage_id.
+        IF sy-subrc <> 0.
+      *   A termination message ends the update and rolls back the whole LUW,
+      *   including the order, so order and staging status stay consistent.
+          MESSAGE a398(00) WITH 'Staging row' iv_stage_id 'not found'.
+        ENDIF.
+      ENDFUNCTION.
+      ```
+
+      Terminated updates appear in SM13. Not verified offline: activation in your system, the
+      DDIC types of ZFA_ORDER_STAGE and the order structures, the parameters of the generated
+      lock modules, and a test with real data.
+    negative_responses:
+      - name: commit_before_return_check
+        reason: The order is committed before RETURN is read, so the rollback after an error comes too late to undo it.
+        caught_by: forbidden_pattern
+        response: |
+          * file: src/zfa_order_upload.prog.abap
+          REPORT zfa_order_upload.
+
+          PARAMETERS p_test AS CHECKBOX DEFAULT 'X'.
+
+          DATA gt_stage TYPE STANDARD TABLE OF zfa_order_stage WITH DEFAULT KEY.
+          DATA gs_stage TYPE zfa_order_stage.
+          DATA gs_header TYPE zfa_s_order_header.
+          DATA gs_item TYPE zfa_s_order_item.
+          DATA gt_items TYPE STANDARD TABLE OF zfa_s_order_item WITH DEFAULT KEY.
+          DATA gt_return TYPE STANDARD TABLE OF bapiret2 WITH DEFAULT KEY.
+          DATA gs_return TYPE bapiret2.
+          DATA gv_order_id TYPE zfa_order_id.
+
+          START-OF-SELECTION.
+            SELECT * FROM zfa_order_stage INTO TABLE gt_stage WHERE status = space.
+            LOOP AT gt_stage INTO gs_stage.
+              CLEAR: gs_header, gs_item, gt_items, gt_return, gv_order_id.
+              gs_header-customer   = gs_stage-customer.
+              gs_header-order_date = gs_stage-order_date.
+              gs_header-currency   = gs_stage-currency.
+              gs_item-material     = gs_stage-material.
+              gs_item-quantity     = gs_stage-quantity.
+              gs_item-unit         = gs_stage-unit.
+              APPEND gs_item TO gt_items.
+              CALL FUNCTION 'Z_FA_ORDER_STAGE_SET_POSTED' IN UPDATE TASK
+                EXPORTING
+                  iv_stage_id = gs_stage-stage_id.
+              CALL FUNCTION 'Z_FA_ORDER_CREATE'
+                EXPORTING
+                  is_header   = gs_header
+                  iv_testrun  = p_test
+                IMPORTING
+                  ev_order_id = gv_order_id
+                TABLES
+                  it_items    = gt_items
+                  return      = gt_return.
+              CALL FUNCTION 'BAPI_TRANSACTION_COMMIT'
+                EXPORTING
+                  wait = 'X'.
+              LOOP AT gt_return INTO gs_return WHERE type = 'E' OR type = 'A'.
+                CALL FUNCTION 'BAPI_TRANSACTION_ROLLBACK'.
+                EXIT.
+              ENDLOOP.
+              LOOP AT gt_return INTO gs_return.
+                WRITE: / gs_stage-stage_id, gs_return-type, gs_return-message.
+              ENDLOOP.
+            ENDLOOP.
+      - name: no_commit_after_success
+        reason: Without BAPI_TRANSACTION_COMMIT the registered update is never executed, so no order is saved.
+        caught_by: expected_pattern
+        response: |
+          Z_FA_ORDER_CREATE saves the order itself, so the report only has to check RETURN and
+          roll back when something failed.
+
+          * file: src/zfa_order_upload.prog.abap
+          REPORT zfa_order_upload.
+
+          PARAMETERS p_test AS CHECKBOX DEFAULT 'X'.
+
+          DATA gt_stage TYPE STANDARD TABLE OF zfa_order_stage WITH DEFAULT KEY.
+          DATA gs_stage TYPE zfa_order_stage.
+          DATA gs_header TYPE zfa_s_order_header.
+          DATA gs_item TYPE zfa_s_order_item.
+          DATA gt_items TYPE STANDARD TABLE OF zfa_s_order_item WITH DEFAULT KEY.
+          DATA gt_return TYPE STANDARD TABLE OF bapiret2 WITH DEFAULT KEY.
+          DATA gs_return TYPE bapiret2.
+          DATA gv_order_id TYPE zfa_order_id.
+          DATA gv_failed TYPE c LENGTH 1.
+
+          START-OF-SELECTION.
+            SELECT * FROM zfa_order_stage INTO TABLE gt_stage WHERE status = space.
+            LOOP AT gt_stage INTO gs_stage.
+              CLEAR: gs_header, gs_item, gt_items, gt_return, gv_order_id, gv_failed.
+              gs_header-customer   = gs_stage-customer.
+              gs_header-order_date = gs_stage-order_date.
+              gs_header-currency   = gs_stage-currency.
+              gs_item-material     = gs_stage-material.
+              gs_item-quantity     = gs_stage-quantity.
+              gs_item-unit         = gs_stage-unit.
+              APPEND gs_item TO gt_items.
+              CALL FUNCTION 'Z_FA_ORDER_CREATE'
+                EXPORTING
+                  is_header   = gs_header
+                  iv_testrun  = p_test
+                IMPORTING
+                  ev_order_id = gv_order_id
+                TABLES
+                  it_items    = gt_items
+                  return      = gt_return.
+              LOOP AT gt_return INTO gs_return WHERE type = 'E' OR type = 'A'.
+                gv_failed = 'X'.
+                EXIT.
+              ENDLOOP.
+              IF gv_failed = 'X' OR p_test = 'X'.
+                CALL FUNCTION 'BAPI_TRANSACTION_ROLLBACK'.
+              ELSE.
+                CALL FUNCTION 'Z_FA_ORDER_STAGE_SET_POSTED' IN UPDATE TASK
+                  EXPORTING
+                    iv_stage_id = gs_stage-stage_id.
+              ENDIF.
+              LOOP AT gt_return INTO gs_return.
+                WRITE: / gs_stage-stage_id, gs_return-type, gs_return-message.
+              ENDLOOP.
+            ENDLOOP.
+      - name: syntax_740_on_ehp6
+        reason: Inline declarations, VALUE, WITH EMPTY KEY, and line_exists( ) need SAP_BASIS 7.40; the report does not compile on 7.31.
+        caught_by: validator
+        response: |
+          * file: src/zfa_order_upload.prog.abap
+          REPORT zfa_order_upload.
+
+          TYPES tt_items TYPE STANDARD TABLE OF zfa_s_order_item WITH EMPTY KEY.
+          TYPES tt_return TYPE STANDARD TABLE OF bapiret2 WITH EMPTY KEY.
+
+          PARAMETERS p_test AS CHECKBOX DEFAULT 'X'.
+
+          DATA gt_stage TYPE STANDARD TABLE OF zfa_order_stage WITH EMPTY KEY.
+          DATA gt_return TYPE tt_return.
+          DATA gv_order_id TYPE zfa_order_id.
+
+          START-OF-SELECTION.
+            SELECT * FROM zfa_order_stage INTO TABLE gt_stage WHERE status = space.
+            LOOP AT gt_stage INTO DATA(ls_stage).
+              DATA(ls_header) = VALUE zfa_s_order_header( customer   = ls_stage-customer
+                                                         order_date = ls_stage-order_date
+                                                         currency   = ls_stage-currency ).
+              DATA(lt_items) = VALUE tt_items( ( material = ls_stage-material
+                                                 quantity = ls_stage-quantity
+                                                 unit     = ls_stage-unit ) ).
+              CLEAR: gt_return, gv_order_id.
+              CALL FUNCTION 'Z_FA_ORDER_CREATE'
+                EXPORTING
+                  is_header   = ls_header
+                  iv_testrun  = p_test
+                IMPORTING
+                  ev_order_id = gv_order_id
+                TABLES
+                  it_items    = lt_items
+                  return      = gt_return.
+              IF line_exists( gt_return[ type = 'E' ] ) OR line_exists( gt_return[ type = 'A' ] ).
+                CALL FUNCTION 'BAPI_TRANSACTION_ROLLBACK'.
+              ELSE.
+                CALL FUNCTION 'Z_FA_ORDER_STAGE_SET_POSTED' IN UPDATE TASK
+                  EXPORTING
+                    iv_stage_id = ls_stage-stage_id.
+                CALL FUNCTION 'BAPI_TRANSACTION_COMMIT'
+                  EXPORTING
+                    wait = abap_true.
+              ENDIF.
+              LOOP AT gt_return INTO DATA(ls_return).
+                WRITE: / ls_stage-stage_id, ls_return-type, ls_return-message.
+              ENDLOOP.
+            ENDLOOP.
+      - name: posting_inside_select_endselect
+        reason: The report posts and commits inside SELECT ... ENDSELECT; the commit closes the database cursor and the next fetch ends in a runtime error.
+        caught_by: forbidden_pattern
+        response: |
+          * file: src/zfa_order_upload.prog.abap
+          REPORT zfa_order_upload.
+
+          PARAMETERS p_test AS CHECKBOX DEFAULT 'X'.
+
+          DATA gs_stage TYPE zfa_order_stage.
+          DATA gs_header TYPE zfa_s_order_header.
+          DATA gs_item TYPE zfa_s_order_item.
+          DATA gt_items TYPE STANDARD TABLE OF zfa_s_order_item WITH DEFAULT KEY.
+          DATA gt_return TYPE STANDARD TABLE OF bapiret2 WITH DEFAULT KEY.
+          DATA gs_return TYPE bapiret2.
+          DATA gv_order_id TYPE zfa_order_id.
+          DATA gv_failed TYPE c LENGTH 1.
+
+          START-OF-SELECTION.
+            SELECT * FROM zfa_order_stage INTO gs_stage WHERE status = space.
+              CLEAR: gs_header, gs_item, gt_items, gt_return, gv_order_id, gv_failed.
+              gs_header-customer   = gs_stage-customer.
+              gs_header-order_date = gs_stage-order_date.
+              gs_header-currency   = gs_stage-currency.
+              gs_item-material     = gs_stage-material.
+              gs_item-quantity     = gs_stage-quantity.
+              gs_item-unit         = gs_stage-unit.
+              APPEND gs_item TO gt_items.
+              CALL FUNCTION 'Z_FA_ORDER_CREATE'
+                EXPORTING
+                  is_header   = gs_header
+                  iv_testrun  = p_test
+                IMPORTING
+                  ev_order_id = gv_order_id
+                TABLES
+                  it_items    = gt_items
+                  return      = gt_return.
+              LOOP AT gt_return INTO gs_return WHERE type = 'E' OR type = 'A'.
+                gv_failed = 'X'.
+                EXIT.
+              ENDLOOP.
+              IF gv_failed = 'X' OR p_test = 'X'.
+                CALL FUNCTION 'BAPI_TRANSACTION_ROLLBACK'.
+              ELSE.
+                CALL FUNCTION 'Z_FA_ORDER_STAGE_SET_POSTED' IN UPDATE TASK
+                  EXPORTING
+                    iv_stage_id = gs_stage-stage_id.
+                CALL FUNCTION 'BAPI_TRANSACTION_COMMIT'
+                  EXPORTING
+                    wait = 'X'.
+              ENDIF.
+              LOOP AT gt_return INTO gs_return.
+                WRITE: / gs_stage-stage_id, gs_return-type, gs_return-message.
+              ENDLOOP.
+            ENDSELECT.
+      - name: staged_rows_never_marked
+        reason: The report never marks a posted row, so the next run, or a restart after a dump, creates every order again.
+        caught_by: expected_pattern
+        response: |
+          * file: src/zfa_order_upload.prog.abap
+          REPORT zfa_order_upload.
+
+          PARAMETERS p_test AS CHECKBOX DEFAULT 'X'.
+
+          DATA gt_stage TYPE STANDARD TABLE OF zfa_order_stage WITH DEFAULT KEY.
+          DATA gs_stage TYPE zfa_order_stage.
+          DATA gs_header TYPE zfa_s_order_header.
+          DATA gs_item TYPE zfa_s_order_item.
+          DATA gt_items TYPE STANDARD TABLE OF zfa_s_order_item WITH DEFAULT KEY.
+          DATA gt_return TYPE STANDARD TABLE OF bapiret2 WITH DEFAULT KEY.
+          DATA gs_return TYPE bapiret2.
+          DATA gv_order_id TYPE zfa_order_id.
+          DATA gv_failed TYPE c LENGTH 1.
+
+          START-OF-SELECTION.
+            SELECT * FROM zfa_order_stage INTO TABLE gt_stage WHERE status = space.
+            LOOP AT gt_stage INTO gs_stage.
+              CLEAR: gs_header, gs_item, gt_items, gt_return, gv_order_id, gv_failed.
+              gs_header-customer   = gs_stage-customer.
+              gs_header-order_date = gs_stage-order_date.
+              gs_header-currency   = gs_stage-currency.
+              gs_item-material     = gs_stage-material.
+              gs_item-quantity     = gs_stage-quantity.
+              gs_item-unit         = gs_stage-unit.
+              APPEND gs_item TO gt_items.
+              CALL FUNCTION 'Z_FA_ORDER_CREATE'
+                EXPORTING
+                  is_header   = gs_header
+                  iv_testrun  = p_test
+                IMPORTING
+                  ev_order_id = gv_order_id
+                TABLES
+                  it_items    = gt_items
+                  return      = gt_return.
+              LOOP AT gt_return INTO gs_return WHERE type = 'E' OR type = 'A'.
+                gv_failed = 'X'.
+                EXIT.
+              ENDLOOP.
+              IF gv_failed = 'X' OR p_test = 'X'.
+                CALL FUNCTION 'BAPI_TRANSACTION_ROLLBACK'.
+              ELSE.
+                CALL FUNCTION 'BAPI_TRANSACTION_COMMIT'
+                  EXPORTING
+                    wait = 'X'.
+              ENDIF.
+              LOOP AT gt_return INTO gs_return.
+                WRITE: / gs_stage-stage_id, gs_return-type, gs_return-message.
+              ENDLOOP.
+            ENDLOOP.
+
+  - name: srfc_with_failure_handling_ehp4
+    description: Synchronous RFC with SYSTEM_FAILURE and COMMUNICATION_FAILURE handled with MESSAGE, RETURN evaluated, and logon data kept in SM59, in classic syntax for SAP_BASIS 7.01.
+    prompt: |
+      Our ECC 6.0 EHP4 system (SAP_BASIS 7.01, SQL Server, on AWS EC2) must show the open
+      orders of a customer that are kept in our S/4HANA 2023 system. The S/4HANA team built
+      this remote-enabled function module:
+
+        FUNCTION z_fa_open_orders_get
+          IMPORTING
+            VALUE(iv_customer) TYPE kunnr
+          TABLES
+            et_orders STRUCTURE zfa_s_open_order
+            return    STRUCTURE bapiret2
+          EXCEPTIONS
+            customer_not_found.
+
+      The structure ZFA_S_OPEN_ORDER exists in both systems. Write the ECC report that calls
+      it and handles every kind of error. The S/4HANA team gave us a technical user for the
+      connection.
+    environment:
+      product: ecc
+      release: ehp4
+      database: anydb
+      deployment: aws-iaas
+    expected_patterns:
+      - '(?i)CALL\s+FUNCTION\s+''Z_FA_OPEN_ORDERS_GET''\s+DESTINATION'
+      - '(?i)system_failure\s*=\s*\d+\s+MESSAGE\s+\w+'
+      - '(?i)communication_failure\s*=\s*\d+\s+MESSAGE\s+\w+'
+      - '(?i)customer_not_found\s*=\s*\d+'
+      - '(?i)(type\s*(=|EQ)\s*''A''|\bCA\s*''(EA|AE)''|WHEN\s+''[EA]''\s+OR\s+''[EA]'')'
+      - '(?i)\bSM59\b'
+    forbidden_patterns:
+      - '(?i)\b\w*(?:passw(?:or)?d|pwd)\w*\b(?:\s*=\s*|\s+TYPE\s+[^.]*?\bVALUE\s+)''[^'']+'''
+      - '(?i)\b\w*(?:pw|pass|secret|credential|logon|login|user(?:name)?|uname)\b(?:\s*=\s*|\s+TYPE\s+[^.]*?\bVALUE\s+)''[^'']+'''
+      - '(?i)CALL\s+FUNCTION\s+''[^'']+''\s+DESTINATION\b(?!(?:''[^''\n]*''|"[^\n]*|\n\*[^\n]*|[^.''"])*?\bcommunication_failure\b)(?:''[^''\n]*''|"[^\n]*|\n\*[^\n]*|[^.''"])*\.'
+      - '(?i)^[ \t]*WAIT\s+FOR\s+ASYNCHRONOUS\s+TASKS\b'
+    tags: [rfc, security, ecc, release-aware, iaas]
+    validators: [abaplint]
+    mock_response: |
+      Target assumed: SAP ECC 6.0 EHP4, SAP_BASIS 7.01, SQL Server. Running on AWS EC2 does not
+      change the ABAP. SAP_BASIS 7.01 has no string templates or other 7.02 syntax, so the
+      report uses classic statements only.
+
+      Set up the connection first:
+
+      1. In SM59, create the ABAP connection (type 3) ZFA_S4H_100 to the S/4HANA system and
+         enter the technical user and its password there, in the logon data of the
+         destination. They never go into code, constants, tables, or variants. Create a
+         destination with the same name in each ECC system of the landscape, pointing to the
+         matching S/4HANA system.
+      2. Protect the destination: enter a value in "Authorization for Destination" on the tab
+         Logon & Security, and give only the users of this report authorization object S_ICF
+         with ICF_FIELD DEST and that value.
+      3. In S/4HANA, create the technical user with user type System or Communication, which
+         cannot log on in dialog. Give it S_RFC with RFC_TYPE FUGR, RFC_NAME = the function
+         group of Z_FA_OPEN_ORDERS_GET, and ACTVT 16, plus the authorizations the function
+         module checks itself.
+      4. Trusted RFC (SMT1, S_RFCACL) would log on users without a password. Use it only if
+         your security team decides so.
+
+      Check that ZFA_S_OPEN_ORDER has the same components with the same types and lengths in
+      both systems (SE11). The same data element can differ: the material number has 18
+      characters in ECC and up to 40 in S/4HANA, which would give the structure a different
+      layout on each side.
+
+      How the report handles errors:
+
+      - SYSTEM_FAILURE: an error in S/4HANA, such as a runtime error or a message of type A,
+        E, or X. The text is in gv_rfc_message; runtime errors are also in ST22 in S/4HANA.
+      - COMMUNICATION_FAILURE: no connection, a failed logon, or a broken network. Test the
+        destination in SM59.
+      - CUSTOMER_NOT_FOUND: the function module's own exception.
+      - RETURN: messages of type E or A from the function module.
+      - The remote call triggers a database commit in ECC, so the report calls it before it
+        changes any data and never inside a SELECT loop.
+      - The authorization check in ECC matters because the technical user in S/4HANA may see
+        more than the person who runs the report.
+
+      ```abap
+      * file: src/zfa_s4_open_orders.prog.abap
+      REPORT zfa_s4_open_orders.
+
+      " SM59 destination (type 3) to the S/4HANA system. It holds the logon data, so no
+      " user or password appears in this program.
+      CONSTANTS gc_destination TYPE rfcdest VALUE 'ZFA_S4H_100'.
+
+      PARAMETERS p_kunnr TYPE kunnr OBLIGATORY.
+
+      DATA gt_orders TYPE STANDARD TABLE OF zfa_s_open_order WITH DEFAULT KEY.
+      DATA gt_return TYPE STANDARD TABLE OF bapiret2 WITH DEFAULT KEY.
+      DATA gs_return TYPE bapiret2.
+      DATA gv_rfc_message TYPE c LENGTH 255.
+      DATA gv_failed TYPE c LENGTH 1.
+      DATA go_alv TYPE REF TO cl_salv_table.
+      DATA gx_salv TYPE REF TO cx_salv_msg.
+      DATA gv_text TYPE string.
+
+      AT SELECTION-SCREEN.
+        AUTHORITY-CHECK OBJECT 'ZFA_S4ORD'
+          ID 'ACTVT' FIELD '03'.
+        IF sy-subrc <> 0.
+          MESSAGE e398(00) WITH 'No authorization to read S/4HANA orders'.
+        ENDIF.
+
+      START-OF-SELECTION.
+        CALL FUNCTION 'Z_FA_OPEN_ORDERS_GET'
+          DESTINATION gc_destination
+          EXPORTING
+            iv_customer           = p_kunnr  " ECC customer number, e.g. 0000004711.
+          TABLES
+            et_orders             = gt_orders
+            return                = gt_return
+          EXCEPTIONS
+            customer_not_found    = 1
+            system_failure        = 2 MESSAGE gv_rfc_message
+            communication_failure = 3 MESSAGE gv_rfc_message
+            OTHERS                = 4.
+        CASE sy-subrc.
+          WHEN 0.
+            " The call worked. RETURN says whether the function did.
+          WHEN 1.
+            WRITE: / 'Customer', p_kunnr, 'does not exist in S/4HANA.'.
+            RETURN.
+          WHEN 2.
+            WRITE: / 'Error in S/4HANA:', gv_rfc_message.
+            RETURN.
+          WHEN 3.
+            WRITE: / 'Connection to S/4HANA failed:', gv_rfc_message.
+            RETURN.
+          WHEN OTHERS.
+            WRITE: / 'Remote call failed with return code', sy-subrc.
+            RETURN.
+        ENDCASE.
+
+        LOOP AT gt_return INTO gs_return WHERE type = 'E' OR type = 'A'.
+          WRITE: / gs_return-type, gs_return-message.
+          gv_failed = 'X'.
+        ENDLOOP.
+        IF gv_failed = 'X'.
+          RETURN.
+        ENDIF.
+
+        TRY.
+            cl_salv_table=>factory( IMPORTING r_salv_table = go_alv
+                                    CHANGING  t_table      = gt_orders ).
+            go_alv->display( ).
+          CATCH cx_salv_msg INTO gx_salv.
+            gv_text = gx_salv->get_text( ).
+            WRITE: / gv_text.
+        ENDTRY.
+      ```
+
+      Create the authorization object ZFA_S4ORD (field ACTVT) in SU21 and assign it to the
+      roles of the users who may run the report.
+
+      Not verified offline: activation in ECC, the destination and logon in SM59, and a test
+      call against the S/4HANA system.
+    negative_responses:
+      - name: no_rfc_exceptions
+        reason: Without SYSTEM_FAILURE and COMMUNICATION_FAILURE with MESSAGE the report cannot tell an error in S/4HANA from a connection problem and loses the error text.
+        caught_by: expected_pattern
+        response: |
+          Maintain the destination ZFA_S4H_100 in SM59, then run this report.
+
+          * file: src/zfa_s4_open_orders.prog.abap
+          REPORT zfa_s4_open_orders.
+
+          CONSTANTS gc_destination TYPE rfcdest VALUE 'ZFA_S4H_100'.
+
+          PARAMETERS p_kunnr TYPE kunnr OBLIGATORY.
+
+          DATA gt_orders TYPE STANDARD TABLE OF zfa_s_open_order WITH DEFAULT KEY.
+          DATA gt_return TYPE STANDARD TABLE OF bapiret2 WITH DEFAULT KEY.
+          DATA gs_return TYPE bapiret2.
+          DATA go_alv TYPE REF TO cl_salv_table.
+          DATA gx_salv TYPE REF TO cx_salv_msg.
+
+          START-OF-SELECTION.
+            CALL FUNCTION 'Z_FA_OPEN_ORDERS_GET'
+              DESTINATION gc_destination
+              EXPORTING
+                iv_customer        = p_kunnr
+              TABLES
+                et_orders          = gt_orders
+                return             = gt_return
+              EXCEPTIONS
+                customer_not_found = 1
+                OTHERS             = 2.
+            IF sy-subrc <> 0.
+              WRITE: / 'The call failed.'.
+              RETURN.
+            ENDIF.
+            LOOP AT gt_return INTO gs_return WHERE type = 'E' OR type = 'A'.
+              WRITE: / gs_return-type, gs_return-message.
+              RETURN.
+            ENDLOOP.
+            TRY.
+                cl_salv_table=>factory( IMPORTING r_salv_table = go_alv
+                                        CHANGING  t_table      = gt_orders ).
+                go_alv->display( ).
+              CATCH cx_salv_msg INTO gx_salv.
+                WRITE: / 'The list cannot be displayed.'.
+            ENDTRY.
+      - name: hardcoded_rfc_logon
+        reason: The technical user and its password are written into the program instead of the SM59 destination, so everyone who can read the code knows them.
+        caught_by: forbidden_pattern
+        response: |
+          The destination ZFA_S4H_100 must exist in SM59. The report passes the technical user
+          from the S/4HANA team with every call.
+
+          * file: src/zfa_s4_open_orders.prog.abap
+          REPORT zfa_s4_open_orders.
+
+          CONSTANTS: lc_rfc_user     TYPE c LENGTH 12 VALUE 'RFC_S4READ',
+                     lc_rfc_password TYPE c LENGTH 20 VALUE 'Example-Pw-1'.
+          CONSTANTS gc_destination TYPE rfcdest VALUE 'ZFA_S4H_100'.
+
+          PARAMETERS p_kunnr TYPE kunnr OBLIGATORY.
+
+          DATA gt_orders TYPE STANDARD TABLE OF zfa_s_open_order WITH DEFAULT KEY.
+          DATA gt_return TYPE STANDARD TABLE OF bapiret2 WITH DEFAULT KEY.
+          DATA gs_return TYPE bapiret2.
+          DATA gv_rfc_message TYPE c LENGTH 255.
+
+          START-OF-SELECTION.
+            CALL FUNCTION 'Z_FA_OPEN_ORDERS_GET'
+              DESTINATION gc_destination
+              EXPORTING
+                iv_customer           = p_kunnr
+                iv_user               = lc_rfc_user
+                iv_password           = lc_rfc_password
+              TABLES
+                et_orders             = gt_orders
+                return                = gt_return
+              EXCEPTIONS
+                customer_not_found    = 1
+                system_failure        = 2 MESSAGE gv_rfc_message
+                communication_failure = 3 MESSAGE gv_rfc_message
+                OTHERS                = 4.
+            IF sy-subrc <> 0.
+              WRITE: / 'Remote call failed:', sy-subrc, gv_rfc_message.
+              RETURN.
+            ENDIF.
+            LOOP AT gt_return INTO gs_return WHERE type = 'E' OR type = 'A'.
+              WRITE: / gs_return-type, gs_return-message.
+            ENDLOOP.
+      - name: logon_data_under_other_names
+        reason: The logon data is in the program again, only under names without "user" or "password"; anyone who reads the code still knows it.
+        caught_by: forbidden_pattern
+        response: |
+          The destination ZFA_S4H_100 must exist in SM59. The report sends the logon of the
+          S/4HANA team with every call.
+
+          * file: src/zfa_s4_open_orders.prog.abap
+          REPORT zfa_s4_open_orders.
+
+          CONSTANTS: gc_logon TYPE c LENGTH 12 VALUE 'RFC_S4READ',
+                     gc_pw    TYPE c LENGTH 20 VALUE 'Example-Pw-1'.
+          CONSTANTS gc_destination TYPE rfcdest VALUE 'ZFA_S4H_100'.
+
+          PARAMETERS p_kunnr TYPE kunnr OBLIGATORY.
+
+          DATA gt_orders TYPE STANDARD TABLE OF zfa_s_open_order WITH DEFAULT KEY.
+          DATA gt_return TYPE STANDARD TABLE OF bapiret2 WITH DEFAULT KEY.
+          DATA gs_return TYPE bapiret2.
+          DATA gv_rfc_message TYPE c LENGTH 255.
+
+          START-OF-SELECTION.
+            CALL FUNCTION 'Z_FA_OPEN_ORDERS_GET'
+              DESTINATION gc_destination
+              EXPORTING
+                iv_customer           = p_kunnr
+                iv_logon              = gc_logon
+                iv_pw                 = gc_pw
+              TABLES
+                et_orders             = gt_orders
+                return                = gt_return
+              EXCEPTIONS
+                customer_not_found    = 1
+                system_failure        = 2 MESSAGE gv_rfc_message
+                communication_failure = 3 MESSAGE gv_rfc_message
+                OTHERS                = 4.
+            IF sy-subrc <> 0.
+              WRITE: / 'Remote call failed:', sy-subrc, gv_rfc_message.
+              RETURN.
+            ENDIF.
+            LOOP AT gt_return INTO gs_return WHERE type = 'E' OR type = 'A'.
+              WRITE: / gs_return-type, gs_return-message.
+            ENDLOOP.
+      - name: return_not_evaluated
+        reason: The report ignores RETURN, so an error that the function module reports there is shown as an empty list of open orders.
+        caught_by: expected_pattern
+        response: |
+          Maintain the destination ZFA_S4H_100 in SM59 with the technical user, then run this
+          report.
+
+          * file: src/zfa_s4_open_orders.prog.abap
+          REPORT zfa_s4_open_orders.
+
+          CONSTANTS gc_destination TYPE rfcdest VALUE 'ZFA_S4H_100'.
+
+          PARAMETERS p_kunnr TYPE kunnr OBLIGATORY.
+
+          DATA gt_orders TYPE STANDARD TABLE OF zfa_s_open_order WITH DEFAULT KEY.
+          DATA gt_return TYPE STANDARD TABLE OF bapiret2 WITH DEFAULT KEY.
+          DATA gv_rfc_message TYPE c LENGTH 255.
+          DATA go_alv TYPE REF TO cl_salv_table.
+          DATA gx_salv TYPE REF TO cx_salv_msg.
+
+          START-OF-SELECTION.
+            CALL FUNCTION 'Z_FA_OPEN_ORDERS_GET'
+              DESTINATION gc_destination
+              EXPORTING
+                iv_customer           = p_kunnr
+              TABLES
+                et_orders             = gt_orders
+                return                = gt_return
+              EXCEPTIONS
+                customer_not_found    = 1
+                system_failure        = 2 MESSAGE gv_rfc_message
+                communication_failure = 3 MESSAGE gv_rfc_message
+                OTHERS                = 4.
+            IF sy-subrc <> 0.
+              WRITE: / 'Remote call failed:', sy-subrc, gv_rfc_message.
+              RETURN.
+            ENDIF.
+            TRY.
+                cl_salv_table=>factory( IMPORTING r_salv_table = go_alv
+                                        CHANGING  t_table      = gt_orders ).
+                go_alv->display( ).
+              CATCH cx_salv_msg INTO gx_salv.
+                WRITE: / 'The list cannot be displayed.'.
+            ENDTRY.
+
+  - name: idoc_inbound_function_ehp7_basis740_sp08
+    description: Inbound IDoc function module with SAP's standard interface, status records 53 and 51, E and A checks, the IN_UPDATE_TASK flag, and no commit, in syntax valid for ECC 6.0 EHP7 on SAP_BASIS 7.40 SP08.
+    prompt: |
+      A partner system sends our own message type ZFA_ORDER (basic type ZFA_ORDER01) to our
+      ECC 6.0 EHP7 system (SAP_BASIS 7.40 SP08). Segment Z1FA_ORDER_HDR has ORDER_ID,
+      CUSTOMER, ORDER_DATE, CURRENCY, and EXT_REF; segment Z1FA_ORDER_ITM has MATERIAL,
+      QUANTITY, and UNIT. Write the inbound function module that posts each IDoc with our
+      function module Z_FA_ORDER_CREATE and reports the result in the IDoc status.
+      Z_FA_ORDER_CREATE takes IS_HEADER (structure ZFA_S_ORDER_HEADER with CUSTOMER,
+      ORDER_DATE, CURRENCY, EXT_REF) and the table IT_ITEMS (ZFA_S_ORDER_ITEM with MATERIAL,
+      QUANTITY, UNIT), returns EV_ORDER_ID and a RETURN table of BAPIRET2, saves through the
+      update task, and does not commit. Also tell me how to register the function module.
+    environment:
+      product: ecc
+      release: ehp7
+      support_package: 8
+      database: anydb
+      deployment: on-premise
+    expected_patterns:
+      - '(?i)FUNCTION\s+z\w+'
+      - '(?i)\bidoc_contrl\b'
+      - '(?i)\bidoc_status\b'
+      - '(?i)\breturn_variables\b'
+      # Literals, or the constants of SAP's include MBDCONWF when the answer includes it.
+      - '''53''|^[ \t]*(?:INCLUDE|include)\s+(?:MBDCONWF|mbdconwf)\s*\.'
+      - '''51''|^[ \t]*(?:INCLUDE|include)\s+(?:MBDCONWF|mbdconwf)\s*\.'
+      - '99999|^[ \t]*(?:INCLUDE|include)\s+(?:MBDCONWF|mbdconwf)\s*\.'
+      - 'Processed_IDOCs|^[ \t]*(?:INCLUDE|include)\s+(?:MBDCONWF|mbdconwf)\s*\.'
+      - 'Error_IDOCs|^[ \t]*(?:INCLUDE|include)\s+(?:MBDCONWF|mbdconwf)\s*\.'
+      - '(?i)\bwrong_function_called\b'
+      - '(?i)(type\s*(=|EQ)\s*''A''|\bCA\s*''(EA|AE)''|WHEN\s+''[EA]''\s+OR\s+''[EA]'')'
+      - '(?i)\bin_update_task\s*=\s*(?:''X''|abap_true)'
+      - '(?i)\bWE42\b'
+      - '(?i)\bWE20\b'
+    forbidden_patterns:
+      - '(?i)^[ \t]*COMMIT\s+WORK\b'
+      - '(?i)^[ \t]*CALL\s+FUNCTION\s+''BAPI_TRANSACTION_COMMIT'''
+    tags: [idoc, ale, ecc, release-aware]
+    validators: [abaplint]
+    mock_response: |
+      Target assumed: SAP ECC 6.0 EHP7 on SAP_BASIS 7.40 SP08. The IDoc inbound interface is
+      the same on every release, and the function module uses classic syntax, so it also runs
+      on older systems.
+
+      The function module does not commit. The ALE layer commits after it has written the
+      status records the function returns, so the order and the IDoc status are saved
+      together, and a failed IDoc leaves nothing behind because Z_FA_ORDER_CREATE registers
+      nothing when it reports an error. Per IDoc it returns status 53 (posted) or 51 (not
+      posted, with the message from RETURN). Both E and A in RETURN mean failure.
+      WORKFLOW_RESULT is 0 when all IDocs were posted and 99999 when one failed, which starts
+      the error workflow. RETURN_VARIABLES gets Processed_IDOCs and Appl_Objects for posted
+      IDocs and Error_IDOCs for failed ones; the names are case-sensitive. IN_UPDATE_TASK is X
+      because Z_FA_ORDER_CREATE posts through the update task.
+
+      Segment fields arrive as characters. A partner that sends a quantity such as 10,5 would
+      make the move into the typed quantity field raise CX_SY_CONVERSION_NO_NUMBER, so the move
+      is wrapped in TRY and such an IDoc gets status 51 instead of a short dump. If an EDI
+      partner sends ISO codes for units or currencies, convert them first, for example with
+      UNIT_OF_MEASURE_ISO_TO_SAP; check its interface in SE37.
+
+      ```abap
+      * file: src/zfa_order_idoc.fugr.z_fa_idoc_input_order.abap
+      FUNCTION z_fa_idoc_input_order.
+      *"----------------------------------------------------------------------
+      *"*"Local Interface:
+      *"  IMPORTING
+      *"     VALUE(INPUT_METHOD) LIKE  BDWFAP_PAR-INPUTMETHD
+      *"     VALUE(MASS_PROCESSING) LIKE  BDWFAP_PAR-MASS_PROC
+      *"  EXPORTING
+      *"     VALUE(WORKFLOW_RESULT) LIKE  BDWF_PARAM-RESULT
+      *"     VALUE(APPLICATION_VARIABLE) LIKE  BDWF_PARAM-APPL_VAR
+      *"     VALUE(IN_UPDATE_TASK) LIKE  BDWFAP_PAR-UPDATETASK
+      *"     VALUE(CALL_TRANSACTION_DONE) LIKE  BDWFAP_PAR-CALLTRANS
+      *"  TABLES
+      *"      IDOC_CONTRL STRUCTURE  EDIDC
+      *"      IDOC_DATA STRUCTURE  EDIDD
+      *"      IDOC_STATUS STRUCTURE  BDIDOCSTAT
+      *"      RETURN_VARIABLES STRUCTURE  BDWFRETVAR
+      *"      SERIALIZATION_INFO STRUCTURE  BDI_SER
+      *"  EXCEPTIONS
+      *"      WRONG_FUNCTION_CALLED
+      *"----------------------------------------------------------------------
+      * Inbound processing for message type ZFA_ORDER. Registered in WE57 (basic
+      * type ZFA_ORDER01, direction 2), BD51 (input type), WE42 (process code
+      * ZFA_ORDER), and WE20 (inbound parameter of the sending partner).
+        CONSTANTS: lc_posted     TYPE bdidocstat-status VALUE '53',
+                   lc_not_posted TYPE bdidocstat-status VALUE '51',
+                   lc_result_ok  TYPE bdwf_param-result VALUE '0',
+                   lc_result_err TYPE bdwf_param-result VALUE '99999'.
+
+        DATA: ls_control TYPE edidc,
+              ls_data    TYPE edidd,
+              ls_status  TYPE bdidocstat,
+              ls_retvar  TYPE bdwfretvar,
+              ls_hdr_seg TYPE z1fa_order_hdr,
+              ls_itm_seg TYPE z1fa_order_itm,
+              ls_header  TYPE zfa_s_order_header,
+              ls_item    TYPE zfa_s_order_item,
+              lt_items   TYPE STANDARD TABLE OF zfa_s_order_item,
+              lt_return  TYPE STANDARD TABLE OF bapiret2,
+              ls_return  TYPE bapiret2,
+              ls_error   TYPE bapiret2,
+              lv_order   TYPE zfa_order_id,
+              lv_failed  TYPE c LENGTH 1.
+
+        CLEAR: application_variable, call_transaction_done.
+        workflow_result = lc_result_ok.
+      * Z_FA_ORDER_CREATE saves through the update task.
+        in_update_task = 'X'.
+
+        LOOP AT idoc_contrl INTO ls_control.
+          IF ls_control-mestyp <> 'ZFA_ORDER'.
+            RAISE wrong_function_called.
+          ENDIF.
+
+          CLEAR: ls_header, lt_items, lt_return, ls_error, lv_order, lv_failed.
+          LOOP AT idoc_data INTO ls_data WHERE docnum = ls_control-docnum.
+            CASE ls_data-segnam.
+              WHEN 'Z1FA_ORDER_HDR'.
+                ls_hdr_seg = ls_data-sdata.
+                ls_header-customer   = ls_hdr_seg-customer.
+                ls_header-order_date = ls_hdr_seg-order_date.
+                ls_header-currency   = ls_hdr_seg-currency.
+                ls_header-ext_ref    = ls_hdr_seg-ext_ref.
+              WHEN 'Z1FA_ORDER_ITM'.
+                ls_itm_seg = ls_data-sdata.
+                CLEAR ls_item.
+                ls_item-material = ls_itm_seg-material.
+                ls_item-unit     = ls_itm_seg-unit.
+                TRY.
+      *             Segment fields are characters: '10,5' is not a number for ABAP.
+                    ls_item-quantity = ls_itm_seg-quantity.
+                  CATCH cx_sy_conversion_error.
+                    IF lv_failed IS INITIAL.
+                      lv_failed           = 'X'.
+                      ls_error-type       = 'E'.
+                      ls_error-id         = 'ZFA_ORDER'.
+                      ls_error-number     = '020'.
+                      ls_error-message_v1 = ls_itm_seg-quantity.
+                    ENDIF.
+                ENDTRY.
+                APPEND ls_item TO lt_items.
+            ENDCASE.
+          ENDLOOP.
+
+          IF lv_failed IS INITIAL.
+            CALL FUNCTION 'Z_FA_ORDER_CREATE'
+              EXPORTING
+                is_header   = ls_header
+              IMPORTING
+                ev_order_id = lv_order
+              TABLES
+                it_items    = lt_items
+                return      = lt_return.
+
+            LOOP AT lt_return INTO ls_return WHERE type = 'E' OR type = 'A'.
+              lv_failed = 'X'.
+              ls_error = ls_return.
+              EXIT.
+            ENDLOOP.
+          ENDIF.
+
+          CLEAR: ls_status, ls_retvar.
+          ls_status-docnum = ls_control-docnum.
+          ls_retvar-doc_number = ls_control-docnum.
+          IF lv_failed = 'X'.
+            ls_status-status = lc_not_posted.
+            ls_status-msgty  = ls_error-type.
+            ls_status-msgid  = ls_error-id.
+            ls_status-msgno  = ls_error-number.
+            ls_status-msgv1  = ls_error-message_v1.
+            ls_status-msgv2  = ls_error-message_v2.
+            ls_status-msgv3  = ls_error-message_v3.
+            ls_status-msgv4  = ls_error-message_v4.
+            APPEND ls_status TO idoc_status.
+            workflow_result = lc_result_err.
+            ls_retvar-wf_param = 'Error_IDOCs'.
+            APPEND ls_retvar TO return_variables.
+          ELSE.
+            ls_status-status = lc_posted.
+            ls_status-msgty  = 'S'.
+            ls_status-msgid  = 'ZFA_ORDER'.
+            ls_status-msgno  = '010'.
+            ls_status-msgv1  = lv_order.
+            APPEND ls_status TO idoc_status.
+            ls_retvar-wf_param = 'Processed_IDOCs'.
+            APPEND ls_retvar TO return_variables.
+            CLEAR ls_retvar.
+            ls_retvar-wf_param   = 'Appl_Objects'.
+            ls_retvar-doc_number = lv_order.
+            APPEND ls_retvar TO return_variables.
+          ENDIF.
+        ENDLOOP.
+      ENDFUNCTION.
+      ```
+
+      Create the function module in its own function group in SE37 with exactly this
+      interface; the ALE layer calls it by name with these parameters. In message class
+      ZFA_ORDER, message 010 should read "Order &1 created" and message 020 "Quantity &1 is
+      not a valid number".
+
+      Register it:
+
+      1. WE57: enter Z_FA_IDOC_INPUT_ORDER with type F (function module), basic type
+         ZFA_ORDER01, message type ZFA_ORDER, and direction 2 (inbound). Object type takes
+         the BOR object type of the application object, if there is one.
+      2. BD51: maintain the input type of the function module and whether dialog is allowed.
+      3. WE42: create the inbound process code ZFA_ORDER with "Processing with ALE" and
+         "Processing by function module", and assign the function module.
+      4. WE20: in the partner profile of the sending logical system (partner type LS), add an
+         inbound parameter for ZFA_ORDER with process code ZFA_ORDER. "Trigger immediately"
+         posts on arrival; "Trigger by background program" leaves the IDocs in status 64 for
+         report RBDAPP01.
+      5. Test with WE19, then check the result in WE02 or WE05. Reprocess failed IDocs (status
+         51) in BD87 after fixing the cause.
+
+      Not verified offline: the function module interface, which SE37 keeps outside the
+      source, activation, and a test with a real IDoc. The syntax check here covers only the
+      statements of the body.
+    negative_responses:
+      - name: commit_inside_inbound_function
+        reason: The function module commits by itself, so the order is saved before the ALE layer writes the IDoc status, and order and status can drift apart.
+        caught_by: forbidden_pattern
+        response: |
+          Register the function module in WE57, BD51, WE42, and WE20.
+
+          * file: src/zfa_order_idoc.fugr.z_fa_idoc_input_order.abap
+          FUNCTION z_fa_idoc_input_order.
+            DATA: ls_control TYPE edidc,
+                  ls_data    TYPE edidd,
+                  ls_status  TYPE bdidocstat,
+                  ls_retvar  TYPE bdwfretvar,
+                  ls_hdr_seg TYPE z1fa_order_hdr,
+                  ls_header  TYPE zfa_s_order_header,
+                  lt_items   TYPE STANDARD TABLE OF zfa_s_order_item,
+                  lt_return  TYPE STANDARD TABLE OF bapiret2,
+                  ls_return  TYPE bapiret2,
+                  lv_order   TYPE zfa_order_id.
+
+            workflow_result = '0'.
+            in_update_task = 'X'.
+            LOOP AT idoc_contrl INTO ls_control.
+              IF ls_control-mestyp <> 'ZFA_ORDER'.
+                RAISE wrong_function_called.
+              ENDIF.
+              CLEAR: ls_header, lt_items, lt_return, lv_order.
+              LOOP AT idoc_data INTO ls_data WHERE docnum = ls_control-docnum.
+                IF ls_data-segnam = 'Z1FA_ORDER_HDR'.
+                  ls_hdr_seg = ls_data-sdata.
+                  ls_header-customer = ls_hdr_seg-customer.
+                ENDIF.
+              ENDLOOP.
+              CALL FUNCTION 'Z_FA_ORDER_CREATE'
+                EXPORTING
+                  is_header   = ls_header
+                IMPORTING
+                  ev_order_id = lv_order
+                TABLES
+                  it_items    = lt_items
+                  return      = lt_return.
+              CLEAR: ls_status, ls_retvar.
+              ls_status-docnum = ls_control-docnum.
+              ls_retvar-doc_number = ls_control-docnum.
+              LOOP AT lt_return INTO ls_return WHERE type = 'E' OR type = 'A'.
+                EXIT.
+              ENDLOOP.
+              IF sy-subrc = 0.
+                ls_status-status = '51'.
+                workflow_result = '99999'.
+                ls_retvar-wf_param = 'Error_IDOCs'.
+              ELSE.
+                CALL FUNCTION 'BAPI_TRANSACTION_COMMIT'
+                  EXPORTING
+                    wait = 'X'.
+                ls_status-status = '53'.
+                ls_retvar-wf_param = 'Processed_IDOCs'.
+              ENDIF.
+              APPEND ls_status TO idoc_status.
+              APPEND ls_retvar TO return_variables.
+            ENDLOOP.
+          ENDFUNCTION.
+      - name: calculation_assignment_on_740_sp08
+        reason: The calculation assignment += needs SAP_BASIS 7.54; the function group does not compile on 7.40 SP08.
+        caught_by: validator
+        response: |
+          Register the function module in WE57, BD51, WE42, and WE20.
+
+          * file: src/zfa_order_idoc.fugr.z_fa_idoc_input_order.abap
+          FUNCTION z_fa_idoc_input_order.
+            DATA: ls_control TYPE edidc,
+                  ls_data    TYPE edidd,
+                  ls_status  TYPE bdidocstat,
+                  ls_retvar  TYPE bdwfretvar,
+                  ls_hdr_seg TYPE z1fa_order_hdr,
+                  ls_header  TYPE zfa_s_order_header,
+                  lt_items   TYPE STANDARD TABLE OF zfa_s_order_item,
+                  lt_return  TYPE STANDARD TABLE OF bapiret2,
+                  ls_return  TYPE bapiret2,
+                  lv_order   TYPE zfa_order_id,
+                  lv_posted  TYPE i.
+
+            workflow_result = '0'.
+            in_update_task = 'X'.
+            LOOP AT idoc_contrl INTO ls_control.
+              IF ls_control-mestyp <> 'ZFA_ORDER'.
+                RAISE wrong_function_called.
+              ENDIF.
+              CLEAR: ls_header, lt_items, lt_return, lv_order.
+              LOOP AT idoc_data INTO ls_data WHERE docnum = ls_control-docnum.
+                IF ls_data-segnam = 'Z1FA_ORDER_HDR'.
+                  ls_hdr_seg = ls_data-sdata.
+                  ls_header-customer = ls_hdr_seg-customer.
+                ENDIF.
+              ENDLOOP.
+              CALL FUNCTION 'Z_FA_ORDER_CREATE'
+                EXPORTING
+                  is_header   = ls_header
+                IMPORTING
+                  ev_order_id = lv_order
+                TABLES
+                  it_items    = lt_items
+                  return      = lt_return.
+              CLEAR: ls_status, ls_retvar.
+              ls_status-docnum = ls_control-docnum.
+              ls_retvar-doc_number = ls_control-docnum.
+              LOOP AT lt_return INTO ls_return WHERE type = 'E' OR type = 'A'.
+                EXIT.
+              ENDLOOP.
+              IF sy-subrc = 0.
+                ls_status-status = '51'.
+                workflow_result = '99999'.
+                ls_retvar-wf_param = 'Error_IDOCs'.
+              ELSE.
+                ls_status-status = '53'.
+                ls_retvar-wf_param = 'Processed_IDOCs'.
+                lv_posted += 1.
+              ENDIF.
+              APPEND ls_status TO idoc_status.
+              APPEND ls_retvar TO return_variables.
+            ENDLOOP.
+          ENDFUNCTION.
+      - name: only_type_e_checked
+        reason: The function treats only type E as failure; an IDoc whose RETURN holds an abort message (type A) gets status 53 although the order was not posted.
+        caught_by: expected_pattern
+        response: |
+          Register the function module in WE57, BD51, WE42, and WE20.
+
+          * file: src/zfa_order_idoc.fugr.z_fa_idoc_input_order.abap
+          FUNCTION z_fa_idoc_input_order.
+            DATA: ls_control TYPE edidc,
+                  ls_data    TYPE edidd,
+                  ls_status  TYPE bdidocstat,
+                  ls_retvar  TYPE bdwfretvar,
+                  ls_hdr_seg TYPE z1fa_order_hdr,
+                  ls_header  TYPE zfa_s_order_header,
+                  lt_items   TYPE STANDARD TABLE OF zfa_s_order_item,
+                  lt_return  TYPE STANDARD TABLE OF bapiret2,
+                  ls_return  TYPE bapiret2,
+                  lv_order   TYPE zfa_order_id.
+
+            workflow_result = '0'.
+            in_update_task = 'X'.
+            LOOP AT idoc_contrl INTO ls_control.
+              IF ls_control-mestyp <> 'ZFA_ORDER'.
+                RAISE wrong_function_called.
+              ENDIF.
+              CLEAR: ls_header, lt_items, lt_return, lv_order.
+              LOOP AT idoc_data INTO ls_data WHERE docnum = ls_control-docnum.
+                IF ls_data-segnam = 'Z1FA_ORDER_HDR'.
+                  ls_hdr_seg = ls_data-sdata.
+                  ls_header-customer = ls_hdr_seg-customer.
+                ENDIF.
+              ENDLOOP.
+              CALL FUNCTION 'Z_FA_ORDER_CREATE'
+                EXPORTING
+                  is_header   = ls_header
+                IMPORTING
+                  ev_order_id = lv_order
+                TABLES
+                  it_items    = lt_items
+                  return      = lt_return.
+              CLEAR: ls_status, ls_retvar.
+              ls_status-docnum = ls_control-docnum.
+              ls_retvar-doc_number = ls_control-docnum.
+              READ TABLE lt_return INTO ls_return WITH KEY type = 'E'.
+              IF sy-subrc = 0.
+                ls_status-status = '51'.
+                workflow_result = '99999'.
+                ls_retvar-wf_param = 'Error_IDOCs'.
+              ELSE.
+                ls_status-status = '53'.
+                ls_retvar-wf_param = 'Processed_IDOCs'.
+              ENDIF.
+              APPEND ls_status TO idoc_status.
+              APPEND ls_retvar TO return_variables.
+            ENDLOOP.
+          ENDFUNCTION.
+
+  - name: segw_entityset_paging_ehp8
+    description: DPC_EXT redefinition that pushes $filter and the counts into the database and limits every response with server-side paging, on ECC 6.0 EHP8 with SAP_GWFND 7.50.
+    prompt: |
+      SEGW project ZFA_PRODUCT on ECC 6.0 EHP8 (SAP_BASIS 7.50, SAP_GWFND 7.50, Oracle). The
+      entity set ProductSet is based on table ZFA_PRODUCT (key PRODUCT_ID, then NAME,
+      CATEGORY, PRICE, CURRENCY), which has about two million rows. Implement
+      PRODUCTSET_GET_ENTITYSET so that $filter, $orderby, $top, $skip, $inlinecount, and
+      $count work and stay fast. Users need authorization object ZFA_PROD with ACTVT 03. This
+      is the generated method in ZCL_ZFA_PRODUCT_DPC:
+
+        METHODS productset_get_entityset
+          IMPORTING
+            iv_entity_name           TYPE string
+            iv_entity_set_name       TYPE string
+            iv_source_name           TYPE string
+            it_filter_select_options TYPE /iwbep/t_mgw_select_option
+            is_paging                TYPE /iwbep/s_mgw_paging
+            it_key_tab               TYPE /iwbep/t_mgw_name_value_pair
+            it_navigation_path       TYPE /iwbep/t_mgw_navigation_path
+            it_order                 TYPE /iwbep/t_mgw_sorting_order
+            iv_filter_string         TYPE string
+            iv_search_string         TYPE string
+            io_tech_request_context  TYPE REF TO /iwbep/if_mgw_req_entityset OPTIONAL
+          EXPORTING
+            et_entityset             TYPE zcl_zfa_product_mpc=>tt_product
+            es_response_context      TYPE /iwbep/if_mgw_appl_srv_runtime=>ty_s_mgw_response_context
+          RAISING
+            /iwbep/cx_mgw_busi_exception
+            /iwbep/cx_mgw_tech_exception.
+    environment:
+      product: ecc
+      release: ehp8
+      database: anydb
+      deployment: on-premise
+    context_files:
+      - path: src/zcl_zfa_product_dpc.clas.abap
+        content: |
+          " Excerpt of the class generated by SEGW, as quoted in the prompt.
+          " Superclass and the other generated methods are omitted.
+          CLASS zcl_zfa_product_dpc DEFINITION PUBLIC CREATE PUBLIC.
+            PROTECTED SECTION.
+              METHODS productset_get_entityset
+                IMPORTING
+                  iv_entity_name           TYPE string
+                  iv_entity_set_name       TYPE string
+                  iv_source_name           TYPE string
+                  it_filter_select_options TYPE /iwbep/t_mgw_select_option
+                  is_paging                TYPE /iwbep/s_mgw_paging
+                  it_key_tab               TYPE /iwbep/t_mgw_name_value_pair
+                  it_navigation_path       TYPE /iwbep/t_mgw_navigation_path
+                  it_order                 TYPE /iwbep/t_mgw_sorting_order
+                  iv_filter_string         TYPE string
+                  iv_search_string         TYPE string
+                  io_tech_request_context  TYPE REF TO /iwbep/if_mgw_req_entityset OPTIONAL
+                EXPORTING
+                  et_entityset             TYPE zcl_zfa_product_mpc=>tt_product
+                  es_response_context      TYPE /iwbep/if_mgw_appl_srv_runtime=>ty_s_mgw_response_context
+                RAISING
+                  /iwbep/cx_mgw_busi_exception
+                  /iwbep/cx_mgw_tech_exception.
+          ENDCLASS.
+
+          CLASS zcl_zfa_product_dpc IMPLEMENTATION.
+            METHOD productset_get_entityset.
+            ENDMETHOD.
+          ENDCLASS.
+    expected_patterns:
+      - '(?i)CLASS\s+zcl_zfa_product_dpc_ext\s+DEFINITION'
+      - '(?i)productset_get_entityset\s+REDEFINITION'
+      - '(?i)(get_osql_where_clause|get_filter)\s*\('
+      - '(?i)get_top\s*\('
+      - '(?i)get_skip\s*\('
+      - '(?i)has_inlinecount\s*\('
+      - '(?i)COUNT\s*\(\s*\*\s*\)'
+      - '(?i)UP\s+TO\s+@?\w+\s+ROWS'
+      - '(?i)-skiptoken\s*='
+      - '(?i)/iwbep/cx_mgw_busi_exception'
+    forbidden_patterns:
+      - '(?i)^\s*LOOP\s+AT\b(?:(?!ENDLOOP)[\s\S])*?^\s*SELECT\b'
+      - '(?i)LOOP\s+AT\s+\S+\s+(?:INTO|ASSIGNING|REFERENCE\s+INTO)\s+\S+\s+FROM\b'
+      - '(?i)\bAPPEND\s+LINES\s+OF\s+\S+\s+FROM\b'
+      - '(?i)/iwbep/cl_mgw_data_util=>(?:paging|filtering|orderby)'
+      - '(?i)-inlinecount\s*=\s*lines\s*\('
+      - '(?i)\b(\w+)\s*=\s*lines\s*\(\s*et_entityset\s*\)[\s\S]*?-inlinecount\s*=\s*\1\b'
+      - '(?i)\bDESCRIBE\s+TABLE\s+et_entityset\s+LINES\s+(\w+)[\s\S]*?-inlinecount\s*=\s*\1\b'
+      - '(?i)(?:=\s*|\bLOOP\s+AT\s+|\bREAD\s+TABLE\s+|\(\s*)(?:is_paging|it_filter_select_options|it_order|it_key_tab|iv_filter_string)\b|\b(?:is_paging|it_filter_select_options|it_order|it_key_tab)\s*(?:-|\[)'
+      - '(?i)\bCLASS\s+\w*_[dm]pc\s+(?:DEFINITION|IMPLEMENTATION)\b'
+      - '(?i)\bCONCATENATE\b[^.]*\bINTO\s+(\w+)\b[^.]*\.[\s\S]*?\bWHERE\s*\(\s*\1\s*\)'
+      - '(?i)\b(\w+)\s*=\s*(?![^.]*cl_abap_dyn_prg)[^.]*(?:&&|\|)[^.]*\.[\s\S]*?\bWHERE\s*\(\s*\1\s*\)'
+      - '(?i)\b(\w+)\s*=\s*[^.]*get_filter_string\s*\([^.]*\.[\s\S]*?\bWHERE\s*\(\s*\1\s*\)'
+      - '(?i)^[ \t]*(?:COMMIT\s+WORK\b|CALL\s+FUNCTION\s+''BAPI_TRANSACTION_COMMIT'')'
+    tags: [gateway, odata, segw, performance, ecc]
+    validators: [abaplint]
+    mock_response: |
+      Target assumed: SAP ECC 6.0 EHP8, SAP_BASIS 7.50 with SAP_GWFND 7.50, Oracle. The code
+      goes into ZCL_ZFA_PRODUCT_DPC_EXT as a redefinition. The generated class
+      ZCL_ZFA_PRODUCT_DPC stays untouched because regeneration overwrites it, so this answer
+      contains only the _EXT class.
+
+      What the method does, and why:
+
+      - It reads the request only through io_tech_request_context, which uses ABAP field
+        names. SAP marks the other importing parameters of the generated method as obsolete.
+      - $filter: get_osql_where_clause( ) returns the filter as an ABAP SQL condition built by
+        the framework. Nothing from the request is concatenated into SQL by hand. SAP does not
+        document how the method reports a filter it cannot convert, so the method refuses to
+        read when the request has a filter but the condition is empty.
+      - $count returns only the number from SELECT COUNT(*). $inlinecount is counted the same
+        way, after $filter and before paging, because it must be the total and not the size
+        of the page.
+      - Paging over two million rows: every response has at most 1000 rows. A request without
+        $top, or with a larger $top, gets a full page and a skiptoken; the framework turns the
+        token into a next link and lowers $top in that link by the rows already sent. The
+        token is the position of the next row. get_top( ) returns an empty string without
+        $top, so $top=0 returns no rows instead of all of them.
+      - The SELECT reads at most offset plus page size rows and deletes the skipped rows
+        afterwards, because OFFSET needs SAP_BASIS 7.51. Pages that start deeper than 10000
+        rows are rejected for the same reason; adjust both limits to your clients. The limits
+        are checked before any arithmetic, so a huge $skip cannot overflow.
+      - $orderby: only known properties reach the dynamic ORDER BY, and the key is added last
+        so that pages stay stable.
+      - A missing authorization returns HTTP 403. Errors in the dynamic SQL become
+        /IWBEP/CX_MGW_BUSI_EXCEPTION, which the client receives as an error response instead
+        of a short dump.
+      - The inline declarations in order_by_columns need SAP_BASIS 7.40 SP02, which 7.50 has.
+      - After an upgrade to 7.51 or later the database can skip the rows with OFFSET. That
+        statement uses the strict syntax check, so separate the dynamic ORDER BY columns with
+        commas there.
+
+      ```abap
+      * file: src/zcl_zfa_product_dpc_ext.clas.abap
+      CLASS zcl_zfa_product_dpc_ext DEFINITION PUBLIC
+        INHERITING FROM zcl_zfa_product_dpc CREATE PUBLIC.
+        PROTECTED SECTION.
+          METHODS productset_get_entityset REDEFINITION.
+        PRIVATE SECTION.
+          " Largest page the service returns; requests for more get a next link.
+          CONSTANTS gc_page_size TYPE i VALUE 1000.
+          " Deepest row a page may start at. Before 7.51 every skipped row is read.
+          CONSTANTS gc_max_offset TYPE i VALUE 10000.
+          METHODS order_by_columns
+            IMPORTING io_request        TYPE REF TO /iwbep/if_mgw_req_entityset
+            RETURNING VALUE(rt_columns) TYPE string_table
+            RAISING   /iwbep/cx_mgw_busi_exception.
+      ENDCLASS.
+
+      CLASS zcl_zfa_product_dpc_ext IMPLEMENTATION.
+        METHOD productset_get_entityset.
+          DATA lv_where TYPE string.
+          DATA lv_filter TYPE string.
+          DATA lt_orderby TYPE string_table.
+          DATA lv_orderby TYPE string.
+          DATA lv_top_text TYPE string.
+          DATA lv_skiptoken TYPE string.
+          DATA lv_top TYPE i.
+          DATA lv_offset TYPE i.
+          DATA lv_page TYPE i.
+          DATA lv_rows TYPE i.
+          DATA lv_lines TYPE i.
+          DATA lv_count TYPE i.
+          DATA lv_next_row TYPE i.
+          DATA lv_next TYPE string.
+
+          AUTHORITY-CHECK OBJECT 'ZFA_PROD'
+            ID 'ACTVT' FIELD '03'.
+          IF sy-subrc <> 0.
+            " 403 Forbidden: the client cannot fix this by changing the request.
+            RAISE EXCEPTION TYPE /iwbep/cx_mgw_busi_exception
+              EXPORTING
+                textid           = /iwbep/cx_mgw_busi_exception=>business_error
+                message          = 'No authorization to display products'
+                http_status_code = '403'.
+          ENDIF.
+
+          " $filter as a condition on ABAP field names, built by the framework.
+          lv_where = io_tech_request_context->get_osql_where_clause( ).
+          lv_filter = io_tech_request_context->get_filter( )->get_filter_string( ).
+          IF lv_where IS INITIAL AND lv_filter IS NOT INITIAL.
+            " Never read without the condition the client asked for.
+            RAISE EXCEPTION TYPE /iwbep/cx_mgw_busi_exception
+              EXPORTING
+                textid  = /iwbep/cx_mgw_busi_exception=>business_error
+                message = 'This $filter is not supported'.
+          ENDIF.
+
+          TRY.
+              " .../ProductSet/$count asks for the number only.
+              IF io_tech_request_context->has_count( ) = abap_true.
+                SELECT COUNT(*) FROM zfa_product INTO lv_count WHERE (lv_where).
+                es_response_context-count = lv_count.
+                RETURN.
+              ENDIF.
+
+              " $inlinecount=allpages: all rows that match $filter, before paging.
+              IF io_tech_request_context->has_inlinecount( ) = abap_true.
+                SELECT COUNT(*) FROM zfa_product INTO lv_count WHERE (lv_where).
+                es_response_context-inlinecount = lv_count.
+              ENDIF.
+            CATCH cx_sy_dynamic_osql_error.
+              RAISE EXCEPTION TYPE /iwbep/cx_mgw_busi_exception
+                EXPORTING
+                  textid  = /iwbep/cx_mgw_busi_exception=>business_error
+                  message = 'The filter cannot be processed'.
+          ENDTRY.
+
+          " get_top( ) is empty without $top. The next link of an earlier page brings
+          " the position of its first row as $skiptoken, without $skip.
+          lv_top_text = io_tech_request_context->get_top( ).
+          lv_skiptoken = io_tech_request_context->get_skiptoken( ).
+          TRY.
+              IF lv_skiptoken IS INITIAL.
+                lv_offset = io_tech_request_context->get_skip( ).
+              ELSE.
+                lv_offset = lv_skiptoken.
+              ENDIF.
+              lv_top = lv_top_text.
+            CATCH cx_sy_conversion_error.
+              RAISE EXCEPTION TYPE /iwbep/cx_mgw_busi_exception
+                EXPORTING
+                  textid  = /iwbep/cx_mgw_busi_exception=>business_error
+                  message = 'Invalid $top, $skip, or $skiptoken'.
+          ENDTRY.
+          IF lv_offset < 0 OR lv_top < 0 OR lv_offset > gc_max_offset.
+            RAISE EXCEPTION TYPE /iwbep/cx_mgw_busi_exception
+              EXPORTING
+                textid  = /iwbep/cx_mgw_busi_exception=>business_error
+                message = 'Page starts too deep; narrow the result with $filter'.
+          ENDIF.
+
+          " Page size: $top, but at most gc_page_size rows. $top=0 asks for no rows.
+          IF lv_top_text IS INITIAL OR lv_top > gc_page_size.
+            lv_page = gc_page_size.
+          ELSE.
+            lv_page = lv_top.
+          ENDIF.
+          IF lv_page = 0.
+            RETURN.
+          ENDIF.
+
+          lt_orderby = order_by_columns( io_tech_request_context ).
+          CONCATENATE LINES OF lt_orderby INTO lv_orderby SEPARATED BY space.
+
+          " Read rows up to the end of the page only (OFFSET needs SAP_BASIS 7.51).
+          lv_rows = lv_offset + lv_page.
+          TRY.
+              SELECT product_id name category price currency
+                FROM zfa_product
+                UP TO lv_rows ROWS
+                INTO CORRESPONDING FIELDS OF TABLE et_entityset
+                WHERE (lv_where)
+                ORDER BY (lv_orderby).
+            CATCH cx_sy_dynamic_osql_error.
+              RAISE EXCEPTION TYPE /iwbep/cx_mgw_busi_exception
+                EXPORTING
+                  textid  = /iwbep/cx_mgw_busi_exception=>business_error
+                  message = 'The filter or sort order cannot be processed'.
+          ENDTRY.
+          IF lv_offset > 0.
+            DELETE et_entityset TO lv_offset.
+          ENDIF.
+
+          " A full page while the client asked for more: the framework turns the
+          " skiptoken, the position of the next row, into a next link.
+          DESCRIBE TABLE et_entityset LINES lv_lines.
+          IF lv_lines = lv_page AND ( lv_top_text IS INITIAL OR lv_top > lv_page ).
+            lv_next_row = lv_offset + lv_page.
+            lv_next = lv_next_row.
+            CONDENSE lv_next.
+            es_response_context-skiptoken = lv_next.
+          ENDIF.
+        ENDMETHOD.
+
+        METHOD order_by_columns.
+          DATA lv_property TYPE string.
+          DATA lv_column TYPE string.
+          DATA lv_key_sorted TYPE abap_bool.
+
+          DATA(lt_order) = io_request->get_orderby( ).
+          LOOP AT lt_order INTO DATA(ls_order).
+            lv_property = ls_order-property.
+            TRANSLATE lv_property TO UPPER CASE.
+            " The property comes from the request: allow known columns only.
+            CASE lv_property.
+              WHEN 'PRODUCT_ID'.
+                lv_key_sorted = abap_true.
+              WHEN 'NAME' OR 'CATEGORY' OR 'PRICE'.
+              WHEN OTHERS.
+                RAISE EXCEPTION TYPE /iwbep/cx_mgw_busi_exception
+                  EXPORTING
+                    textid  = /iwbep/cx_mgw_busi_exception=>business_error
+                    message = 'Sorting by this property is not supported'.
+            ENDCASE.
+            IF ls_order-order = 'desc'.
+              CONCATENATE lv_property 'DESCENDING' INTO lv_column SEPARATED BY space.
+            ELSE.
+              CONCATENATE lv_property 'ASCENDING' INTO lv_column SEPARATED BY space.
+            ENDIF.
+            APPEND lv_column TO rt_columns.
+          ENDLOOP.
+          " The key last, so that pages stay stable when sort values repeat.
+          IF lv_key_sorted = abap_false.
+            APPEND 'PRODUCT_ID ASCENDING' TO rt_columns.
+          ENDIF.
+        ENDMETHOD.
+      ENDCLASS.
+      ```
+
+      Then activate the class, register or refresh the service in /IWFND/MAINT_SERVICE, and
+      test requests such as ProductSet?$filter=CATEGORY eq 'TOOLS'&$orderby=PRICE
+      desc&$top=20&$skip=40&$inlinecount=allpages and ProductSet without $top (it must return
+      1000 rows and a next link) in /IWFND/GW_CLIENT. Errors from this code appear in
+      /IWBEP/ERROR_LOG; framework errors in /IWFND/ERROR_LOG.
+
+      Make sure an index supports the columns your clients filter and sort by most, and
+      create the authorization object ZFA_PROD with field ACTVT in SU21.
+
+      Not verified offline: activation against the real generated classes, the exact
+      signature of the generated method on your support package, which $filter expressions
+      get_osql_where_clause( ) converts on your Gateway release, and the constant for HTTP
+      status 403 in CS_HTTP_STATUS_CODES of the exception class (SE24), which you can use
+      instead of the literal.
+    negative_responses:
+      - name: read_rows_then_page_in_abap
+        reason: The method reads up to 5000 rows for every request and cuts out the page in ABAP, so every page costs as much as the whole result.
+        caught_by: forbidden_pattern
+        response: |
+          * file: src/zcl_zfa_product_dpc_ext.clas.abap
+          CLASS zcl_zfa_product_dpc_ext DEFINITION PUBLIC
+            INHERITING FROM zcl_zfa_product_dpc CREATE PUBLIC.
+            PROTECTED SECTION.
+              METHODS productset_get_entityset REDEFINITION.
+          ENDCLASS.
+
+          CLASS zcl_zfa_product_dpc_ext IMPLEMENTATION.
+            METHOD productset_get_entityset.
+              DATA lt_all TYPE zcl_zfa_product_mpc=>tt_product.
+              DATA ls_product TYPE zcl_zfa_product_mpc=>ts_product.
+              DATA lv_where TYPE string.
+              DATA lv_count TYPE i.
+              DATA lv_top TYPE i.
+              DATA lv_skip TYPE i.
+              DATA lv_from TYPE i.
+              DATA lv_to TYPE i.
+              DATA lv_next TYPE string.
+
+              AUTHORITY-CHECK OBJECT 'ZFA_PROD'
+                ID 'ACTVT' FIELD '03'.
+              IF sy-subrc <> 0.
+                RAISE EXCEPTION TYPE /iwbep/cx_mgw_busi_exception
+                  EXPORTING
+                    textid  = /iwbep/cx_mgw_busi_exception=>business_error
+                    message = 'No authorization to display products'.
+              ENDIF.
+
+              lv_where = io_tech_request_context->get_osql_where_clause( ).
+              IF io_tech_request_context->has_count( ) = abap_true.
+                SELECT COUNT(*) FROM zfa_product INTO lv_count WHERE (lv_where).
+                es_response_context-count = lv_count.
+                RETURN.
+              ENDIF.
+              IF io_tech_request_context->has_inlinecount( ) = abap_true.
+                SELECT COUNT(*) FROM zfa_product INTO lv_count WHERE (lv_where).
+                es_response_context-inlinecount = lv_count.
+              ENDIF.
+
+              SELECT * FROM zfa_product UP TO 5000 ROWS
+                INTO CORRESPONDING FIELDS OF TABLE lt_all
+                WHERE (lv_where)
+                ORDER BY PRIMARY KEY.
+
+              lv_skip = io_tech_request_context->get_skip( ).
+              lv_top = io_tech_request_context->get_top( ).
+              IF lv_top = 0 OR lv_top > 1000.
+                lv_top = 1000.
+                lv_next = lv_skip + lv_top.
+                es_response_context-skiptoken = lv_next.
+              ENDIF.
+              lv_from = lv_skip + 1.
+              lv_to = lv_skip + lv_top.
+              LOOP AT lt_all INTO ls_product FROM lv_from TO lv_to.
+                APPEND ls_product TO et_entityset.
+              ENDLOOP.
+            ENDMETHOD.
+          ENDCLASS.
+      - name: select_per_returned_row
+        reason: A SELECT SINGLE for every returned product turns one page into dozens of database round trips.
+        caught_by: forbidden_pattern
+        response: |
+          * file: src/zcl_zfa_product_dpc_ext.clas.abap
+          CLASS zcl_zfa_product_dpc_ext DEFINITION PUBLIC
+            INHERITING FROM zcl_zfa_product_dpc CREATE PUBLIC.
+            PROTECTED SECTION.
+              METHODS productset_get_entityset REDEFINITION.
+          ENDCLASS.
+
+          CLASS zcl_zfa_product_dpc_ext IMPLEMENTATION.
+            METHOD productset_get_entityset.
+              DATA lv_where TYPE string.
+              DATA lv_top TYPE i.
+              DATA lv_skip TYPE i.
+              DATA lv_rows TYPE i.
+              DATA lv_count TYPE i.
+              DATA lv_next TYPE string.
+
+              AUTHORITY-CHECK OBJECT 'ZFA_PROD'
+                ID 'ACTVT' FIELD '03'.
+              IF sy-subrc <> 0.
+                RAISE EXCEPTION TYPE /iwbep/cx_mgw_busi_exception
+                  EXPORTING
+                    textid  = /iwbep/cx_mgw_busi_exception=>business_error
+                    message = 'No authorization to display products'.
+              ENDIF.
+
+              lv_where = io_tech_request_context->get_osql_where_clause( ).
+              lv_top = io_tech_request_context->get_top( ).
+              lv_skip = io_tech_request_context->get_skip( ).
+              IF io_tech_request_context->has_inlinecount( ) = abap_true.
+                SELECT COUNT(*) FROM zfa_product INTO lv_count WHERE (lv_where).
+                es_response_context-inlinecount = lv_count.
+              ENDIF.
+              IF lv_top = 0 OR lv_top > 1000.
+                lv_top = 1000.
+                lv_next = lv_skip + lv_top.
+                es_response_context-skiptoken = lv_next.
+              ENDIF.
+              lv_rows = lv_skip + lv_top.
+              SELECT product_id category price currency
+                FROM zfa_product
+                UP TO lv_rows ROWS
+                INTO CORRESPONDING FIELDS OF TABLE et_entityset
+                WHERE (lv_where)
+                ORDER BY PRIMARY KEY.
+              IF lv_skip > 0.
+                DELETE et_entityset TO lv_skip.
+              ENDIF.
+
+              " Language-dependent names from the text table.
+              LOOP AT et_entityset ASSIGNING FIELD-SYMBOL(<ls_product>).
+                SELECT SINGLE name FROM zfa_product_t INTO <ls_product>-name
+                  WHERE product_id = <ls_product>-product_id
+                    AND langu = sy-langu.
+              ENDLOOP.
+            ENDMETHOD.
+          ENDCLASS.
+      - name: no_page_size_limit
+        reason: Without $top the method reads all two million rows in one request and never returns a next link, so one plain GET can exhaust the work process.
+        caught_by: expected_pattern
+        response: |
+          * file: src/zcl_zfa_product_dpc_ext.clas.abap
+          CLASS zcl_zfa_product_dpc_ext DEFINITION PUBLIC
+            INHERITING FROM zcl_zfa_product_dpc CREATE PUBLIC.
+            PROTECTED SECTION.
+              METHODS productset_get_entityset REDEFINITION.
+          ENDCLASS.
+
+          CLASS zcl_zfa_product_dpc_ext IMPLEMENTATION.
+            METHOD productset_get_entityset.
+              DATA lv_where TYPE string.
+              DATA lv_top TYPE i.
+              DATA lv_skip TYPE i.
+              DATA lv_rows TYPE i.
+              DATA lv_count TYPE i.
+
+              AUTHORITY-CHECK OBJECT 'ZFA_PROD'
+                ID 'ACTVT' FIELD '03'.
+              IF sy-subrc <> 0.
+                RAISE EXCEPTION TYPE /iwbep/cx_mgw_busi_exception
+                  EXPORTING
+                    textid  = /iwbep/cx_mgw_busi_exception=>business_error
+                    message = 'No authorization to display products'.
+              ENDIF.
+
+              lv_where = io_tech_request_context->get_osql_where_clause( ).
+              lv_top = io_tech_request_context->get_top( ).
+              lv_skip = io_tech_request_context->get_skip( ).
+              IF io_tech_request_context->has_count( ) = abap_true.
+                SELECT COUNT(*) FROM zfa_product INTO lv_count WHERE (lv_where).
+                es_response_context-count = lv_count.
+                RETURN.
+              ENDIF.
+              IF io_tech_request_context->has_inlinecount( ) = abap_true.
+                SELECT COUNT(*) FROM zfa_product INTO lv_count WHERE (lv_where).
+                es_response_context-inlinecount = lv_count.
+              ENDIF.
+              " UP TO 0 ROWS reads all rows, which a request without $top asks for.
+              IF lv_top > 0.
+                lv_rows = lv_skip + lv_top.
+              ENDIF.
+              SELECT * FROM zfa_product
+                UP TO lv_rows ROWS
+                INTO CORRESPONDING FIELDS OF TABLE et_entityset
+                WHERE (lv_where)
+                ORDER BY PRIMARY KEY.
+              IF lv_skip > 0.
+                DELETE et_entityset TO lv_skip.
+              ENDIF.
+            ENDMETHOD.
+          ENDCLASS.
+      - name: inlinecount_from_page_variable
+        reason: $inlinecount is taken from the rows of the returned page through a variable, so the client sees the page size instead of the total that matches $filter.
+        caught_by: forbidden_pattern
+        response: |
+          * file: src/zcl_zfa_product_dpc_ext.clas.abap
+          CLASS zcl_zfa_product_dpc_ext DEFINITION PUBLIC
+            INHERITING FROM zcl_zfa_product_dpc CREATE PUBLIC.
+            PROTECTED SECTION.
+              METHODS productset_get_entityset REDEFINITION.
+          ENDCLASS.
+
+          CLASS zcl_zfa_product_dpc_ext IMPLEMENTATION.
+            METHOD productset_get_entityset.
+              DATA lv_where TYPE string.
+              DATA lv_top TYPE i.
+              DATA lv_skip TYPE i.
+              DATA lv_rows TYPE i.
+              DATA lv_count TYPE i.
+              DATA lv_next TYPE string.
+
+              AUTHORITY-CHECK OBJECT 'ZFA_PROD'
+                ID 'ACTVT' FIELD '03'.
+              IF sy-subrc <> 0.
+                RAISE EXCEPTION TYPE /iwbep/cx_mgw_busi_exception
+                  EXPORTING
+                    textid  = /iwbep/cx_mgw_busi_exception=>business_error
+                    message = 'No authorization to display products'.
+              ENDIF.
+
+              lv_where = io_tech_request_context->get_osql_where_clause( ).
+              lv_top = io_tech_request_context->get_top( ).
+              lv_skip = io_tech_request_context->get_skip( ).
+              IF io_tech_request_context->has_count( ) = abap_true.
+                SELECT COUNT(*) FROM zfa_product INTO lv_count WHERE (lv_where).
+                es_response_context-count = lv_count.
+                RETURN.
+              ENDIF.
+              IF lv_top = 0 OR lv_top > 1000.
+                lv_top = 1000.
+                lv_next = lv_skip + lv_top.
+                es_response_context-skiptoken = lv_next.
+              ENDIF.
+              lv_rows = lv_skip + lv_top.
+              SELECT * FROM zfa_product
+                UP TO lv_rows ROWS
+                INTO CORRESPONDING FIELDS OF TABLE et_entityset
+                WHERE (lv_where)
+                ORDER BY PRIMARY KEY.
+              IF lv_skip > 0.
+                DELETE et_entityset TO lv_skip.
+              ENDIF.
+              IF io_tech_request_context->has_inlinecount( ) = abap_true.
+                lv_count = lines( et_entityset ).
+                es_response_context-inlinecount = lv_count.
+              ENDIF.
+            ENDMETHOD.
+          ENDCLASS.
+      - name: page_cut_with_append_lines
+        reason: The method reads up to 5000 rows and copies the page with APPEND LINES OF ... FROM, so every page costs as much as the whole result.
+        caught_by: forbidden_pattern
+        response: |
+          * file: src/zcl_zfa_product_dpc_ext.clas.abap
+          CLASS zcl_zfa_product_dpc_ext DEFINITION PUBLIC
+            INHERITING FROM zcl_zfa_product_dpc CREATE PUBLIC.
+            PROTECTED SECTION.
+              METHODS productset_get_entityset REDEFINITION.
+          ENDCLASS.
+
+          CLASS zcl_zfa_product_dpc_ext IMPLEMENTATION.
+            METHOD productset_get_entityset.
+              DATA lt_all TYPE zcl_zfa_product_mpc=>tt_product.
+              DATA lv_where TYPE string.
+              DATA lv_count TYPE i.
+              DATA lv_top TYPE i.
+              DATA lv_skip TYPE i.
+              DATA lv_from TYPE i.
+              DATA lv_to TYPE i.
+              DATA lv_next TYPE string.
+
+              AUTHORITY-CHECK OBJECT 'ZFA_PROD'
+                ID 'ACTVT' FIELD '03'.
+              IF sy-subrc <> 0.
+                RAISE EXCEPTION TYPE /iwbep/cx_mgw_busi_exception
+                  EXPORTING
+                    textid  = /iwbep/cx_mgw_busi_exception=>business_error
+                    message = 'No authorization to display products'.
+              ENDIF.
+
+              lv_where = io_tech_request_context->get_osql_where_clause( ).
+              IF io_tech_request_context->has_count( ) = abap_true.
+                SELECT COUNT(*) FROM zfa_product INTO lv_count WHERE (lv_where).
+                es_response_context-count = lv_count.
+                RETURN.
+              ENDIF.
+              IF io_tech_request_context->has_inlinecount( ) = abap_true.
+                SELECT COUNT(*) FROM zfa_product INTO lv_count WHERE (lv_where).
+                es_response_context-inlinecount = lv_count.
+              ENDIF.
+
+              SELECT * FROM zfa_product UP TO 5000 ROWS
+                INTO CORRESPONDING FIELDS OF TABLE lt_all
+                WHERE (lv_where)
+                ORDER BY PRIMARY KEY.
+
+              lv_skip = io_tech_request_context->get_skip( ).
+              lv_top = io_tech_request_context->get_top( ).
+              IF lv_top = 0 OR lv_top > 1000.
+                lv_top = 1000.
+                lv_next = lv_skip + lv_top.
+                es_response_context-skiptoken = lv_next.
+              ENDIF.
+              lv_from = lv_skip + 1.
+              lv_to = lv_skip + lv_top.
+              APPEND LINES OF lt_all FROM lv_from TO lv_to TO et_entityset.
+            ENDMETHOD.
+          ENDCLASS.
+      - name: where_built_from_select_options
+        reason: The WHERE clause is concatenated from select-option values of the request without escaping, which allows SQL injection.
+        caught_by: forbidden_pattern
+        response: |
+          * file: src/zcl_zfa_product_dpc_ext.clas.abap
+          CLASS zcl_zfa_product_dpc_ext DEFINITION PUBLIC
+            INHERITING FROM zcl_zfa_product_dpc CREATE PUBLIC.
+            PROTECTED SECTION.
+              METHODS productset_get_entityset REDEFINITION.
+          ENDCLASS.
+
+          CLASS zcl_zfa_product_dpc_ext IMPLEMENTATION.
+            METHOD productset_get_entityset.
+              DATA lv_where TYPE string.
+              DATA lv_top TYPE i.
+              DATA lv_skip TYPE i.
+              DATA lv_rows TYPE i.
+              DATA lv_count TYPE i.
+              DATA lv_next TYPE string.
+
+              AUTHORITY-CHECK OBJECT 'ZFA_PROD'
+                ID 'ACTVT' FIELD '03'.
+              IF sy-subrc <> 0.
+                RAISE EXCEPTION TYPE /iwbep/cx_mgw_busi_exception
+                  EXPORTING
+                    textid  = /iwbep/cx_mgw_busi_exception=>business_error
+                    message = 'No authorization to display products'.
+              ENDIF.
+
+              DATA(lt_options) = io_tech_request_context->get_filter( )->get_filter_select_options( ).
+              LOOP AT lt_options INTO DATA(ls_option) WHERE property = 'CATEGORY'.
+                LOOP AT ls_option-select_options INTO DATA(ls_select).
+                  CONCATENATE 'CATEGORY = ''' ls_select-low '''' INTO lv_where.
+                ENDLOOP.
+              ENDLOOP.
+
+              lv_top = io_tech_request_context->get_top( ).
+              lv_skip = io_tech_request_context->get_skip( ).
+              IF io_tech_request_context->has_count( ) = abap_true.
+                SELECT COUNT(*) FROM zfa_product INTO lv_count WHERE (lv_where).
+                es_response_context-count = lv_count.
+                RETURN.
+              ENDIF.
+              IF io_tech_request_context->has_inlinecount( ) = abap_true.
+                SELECT COUNT(*) FROM zfa_product INTO lv_count WHERE (lv_where).
+                es_response_context-inlinecount = lv_count.
+              ENDIF.
+              IF lv_top = 0 OR lv_top > 1000.
+                lv_top = 1000.
+                lv_next = lv_skip + lv_top.
+                es_response_context-skiptoken = lv_next.
+              ENDIF.
+              lv_rows = lv_skip + lv_top.
+              SELECT * FROM zfa_product
+                UP TO lv_rows ROWS
+                INTO CORRESPONDING FIELDS OF TABLE et_entityset
+                WHERE (lv_where)
+                ORDER BY PRIMARY KEY.
+              IF lv_skip > 0.
+                DELETE et_entityset TO lv_skip.
+              ENDIF.
+            ENDMETHOD.
+          ENDCLASS.
+
+  - name: arfc_parallel_counts_ehp6
+    description: Parallel processing with asynchronous RFC, a limit on running tasks, RESOURCE_FAILURE handling, and WAIT UNTIL, because WAIT FOR ASYNCHRONOUS TASKS does not exist on SAP_BASIS 7.31.
+    prompt: |
+      Our ECC 6.0 EHP6 system (SAP_BASIS 7.31, IBM Db2, on Google Cloud virtual machines) must
+      count the open items of up to 200 company codes. One company code can take a minute,
+      so the counts must run in parallel on the application servers of the system, with at
+      most 5 running at the same time. Print one line per company code with the count or the
+      error. Our remote-enabled function module Z_FA_OPEN_ITEMS_COUNT has IMPORTING IV_BUKRS
+      TYPE BUKRS and EXPORTING EV_ITEMS TYPE I. Write the report.
+    environment:
+      product: ecc
+      release: ehp6
+      database: anydb
+      deployment: gcp-iaas
+    expected_patterns:
+      - '(?i)CALL\s+FUNCTION\s+''Z_FA_OPEN_ITEMS_COUNT''\s+STARTING\s+NEW\s+TASK'
+      - '(?i)DESTINATION\s+IN\s+GROUP'
+      - '(?i)(?:CALLING\s+\S+\s+|PERFORMING\s+\w+\s+)ON\s+END\s+OF\s+TASK'
+      - '(?i)RECEIVE\s+RESULTS\s+FROM\s+FUNCTION\s+''Z_FA_OPEN_ITEMS_COUNT'''
+      - '(?i)\bresource_failure\s*=\s*\d+'
+      - '(?i)system_failure\s*=\s*\d+\s+MESSAGE\s+\S+'
+      - '(?i)^[ \t]*WAIT\s+UNTIL\b'
+    forbidden_patterns:
+      - '(?i)^[ \t]*WAIT\s+FOR\s+ASYNCHRONOUS\s+TASKS\b'
+      - '(?i)STARTING\s+NEW\s+TASK(?:''[^''\n]*''|"[^\n]*|\n\*[^\n]*|[^.''"])*?\bIMPORTING\b'
+      - '(?i)\b\w*task\w*\s+TYPE\s+c\s+LENGTH\s+(?:9|[1-9]\d+)\b'
+    tags: [rfc, arfc, parallel, ecc, release-aware, iaas]
+    validators: [abaplint]
+    mock_response: |
+      Target assumed: SAP ECC 6.0 EHP6, SAP_BASIS 7.31, IBM Db2. Running on Google Cloud
+      virtual machines does not change the ABAP.
+
+      How the report works:
+
+      - Each company code runs as an asynchronous RFC (STARTING NEW TASK) on a server of the
+        system, chosen with DESTINATION IN GROUP DEFAULT; an RFC server group from RZ12 works
+        the same way.
+      - A public callback method collects each result with RECEIVE RESULTS, which it must
+        always execute, and stores the count or the error per task.
+      - At most p_tasks calls run at the same time: before each start the report waits with
+        WAIT UNTIL until fewer are running. RESOURCE_FAILURE means that no server of the group
+        has free resources; the report then waits until one of its own tasks ends and tries
+        again, up to ten times.
+      - The modern wait statement for callbacks, available from SAP_BASIS 7.40 SP02, is a
+        syntax error on 7.31, so the report uses WAIT UNTIL ... UP TO ... SECONDS.
+      - Task IDs have at most eight characters (ZFA00001), as the 7.31 keyword documentation
+        requires.
+      - Every call and every WAIT commits the database, so the company codes are read into an
+        internal table before the loop.
+
+      ```abap
+      * file: src/zfa_parallel_counts.prog.abap
+      REPORT zfa_parallel_counts.
+
+      DATA gv_bukrs TYPE bukrs.
+
+      SELECT-OPTIONS s_bukrs FOR gv_bukrs.
+      PARAMETERS p_tasks TYPE i DEFAULT 5.
+
+      CLASS lcl_receiver DEFINITION FINAL.
+        PUBLIC SECTION.
+          TYPES: BEGIN OF ty_result,
+                   task    TYPE c LENGTH 8,
+                   bukrs   TYPE bukrs,
+                   items   TYPE i,
+                   subrc   TYPE sysubrc,
+                   message TYPE c LENGTH 255,
+                 END OF ty_result,
+                 tt_results TYPE STANDARD TABLE OF ty_result WITH DEFAULT KEY.
+          DATA mt_results TYPE tt_results.
+          DATA mv_running TYPE i.
+          METHODS on_end_of_task IMPORTING p_task TYPE clike.
+      ENDCLASS.
+
+      CLASS lcl_receiver IMPLEMENTATION.
+        METHOD on_end_of_task.
+          DATA ls_result TYPE ty_result.
+
+          RECEIVE RESULTS FROM FUNCTION 'Z_FA_OPEN_ITEMS_COUNT'
+            IMPORTING
+              ev_items              = ls_result-items
+            EXCEPTIONS
+              system_failure        = 1 MESSAGE ls_result-message
+              communication_failure = 2 MESSAGE ls_result-message
+              OTHERS                = 3.
+          ls_result-subrc = sy-subrc.
+          MODIFY mt_results FROM ls_result TRANSPORTING items subrc message
+            WHERE task = p_task.
+          mv_running = mv_running - 1.
+        ENDMETHOD.
+      ENDCLASS.
+
+      DATA go_receiver TYPE REF TO lcl_receiver.
+      DATA gt_company_codes TYPE STANDARD TABLE OF bukrs WITH DEFAULT KEY.
+      DATA gs_result TYPE lcl_receiver=>ty_result.
+      DATA gv_task_number TYPE n LENGTH 5.
+      DATA gv_running TYPE i.
+      DATA gv_message TYPE c LENGTH 255.
+
+      START-OF-SELECTION.
+        CREATE OBJECT go_receiver.
+        SELECT bukrs FROM t001 INTO TABLE gt_company_codes
+          WHERE bukrs IN s_bukrs
+          ORDER BY bukrs.
+
+        LOOP AT gt_company_codes INTO gv_bukrs.
+          gv_task_number = sy-tabix.
+          CLEAR gs_result.
+          CONCATENATE 'ZFA' gv_task_number INTO gs_result-task.
+          gs_result-bukrs = gv_bukrs.
+          APPEND gs_result TO go_receiver->mt_results.
+
+          DO 10 TIMES.
+            " Keep at most p_tasks calls running at the same time.
+            WAIT UNTIL go_receiver->mv_running < p_tasks UP TO 600 SECONDS.
+            go_receiver->mv_running = go_receiver->mv_running + 1.
+            CALL FUNCTION 'Z_FA_OPEN_ITEMS_COUNT'
+              STARTING NEW TASK gs_result-task
+              DESTINATION IN GROUP DEFAULT
+              CALLING go_receiver->on_end_of_task ON END OF TASK
+              EXPORTING
+                iv_bukrs              = gv_bukrs
+              EXCEPTIONS
+                system_failure        = 1 MESSAGE gv_message
+                communication_failure = 2 MESSAGE gv_message
+                resource_failure      = 3
+                OTHERS                = 4.
+            gs_result-subrc = sy-subrc.
+            IF gs_result-subrc = 0.
+              EXIT.
+            ENDIF.
+            go_receiver->mv_running = go_receiver->mv_running - 1.
+            IF gs_result-subrc <> 3.
+              EXIT.
+            ENDIF.
+            " RESOURCE_FAILURE: wait until one of our tasks ends, then try again.
+            gv_running = go_receiver->mv_running.
+            IF gv_running > 0.
+              WAIT UNTIL go_receiver->mv_running < gv_running UP TO 600 SECONDS.
+            ELSE.
+              WAIT UP TO 1 SECONDS.
+            ENDIF.
+          ENDDO.
+
+          IF gs_result-subrc <> 0.
+            IF gs_result-subrc = 3.
+              gs_result-message = 'No free resources in RFC server group DEFAULT'.
+            ELSE.
+              gs_result-message = gv_message.
+            ENDIF.
+            MODIFY go_receiver->mt_results FROM gs_result TRANSPORTING subrc message
+              WHERE task = gs_result-task.
+          ENDIF.
+        ENDLOOP.
+
+        " Wait for the remaining callbacks.
+        WAIT UNTIL go_receiver->mv_running = 0 UP TO 600 SECONDS.
+
+        LOOP AT go_receiver->mt_results INTO gs_result.
+          WRITE: / gs_result-bukrs, gs_result-items, gs_result-subrc, gs_result-message.
+        ENDLOOP.
+      ```
+
+      The users who run the report need S_RFC for the function group of
+      Z_FA_OPEN_ITEMS_COUNT, because the calls run through RFC. Not verified offline:
+      activation, the resources of the servers in RZ12 or the default group, and the run
+      time with real data.
+    negative_responses:
+      - name: wait_for_asynchronous_tasks_on_731
+        reason: WAIT FOR ASYNCHRONOUS TASKS exists only from SAP_BASIS 7.40 SP02; the report does not compile on 7.31, although abaplint's grammar accepts the statement.
+        caught_by: forbidden_pattern
+        response: |
+          * file: src/zfa_parallel_counts.prog.abap
+          REPORT zfa_parallel_counts.
+
+          DATA gv_bukrs TYPE bukrs.
+          SELECT-OPTIONS s_bukrs FOR gv_bukrs.
+
+          CLASS lcl_receiver DEFINITION FINAL.
+            PUBLIC SECTION.
+              DATA mv_running TYPE i.
+              METHODS on_end_of_task IMPORTING p_task TYPE clike.
+          ENDCLASS.
+
+          CLASS lcl_receiver IMPLEMENTATION.
+            METHOD on_end_of_task.
+              DATA lv_items TYPE i.
+              DATA lv_message TYPE c LENGTH 255.
+              RECEIVE RESULTS FROM FUNCTION 'Z_FA_OPEN_ITEMS_COUNT'
+                IMPORTING
+                  ev_items              = lv_items
+                EXCEPTIONS
+                  system_failure        = 1 MESSAGE lv_message
+                  communication_failure = 2 MESSAGE lv_message
+                  OTHERS                = 3.
+              WRITE: / p_task, lv_items, lv_message.
+              mv_running = mv_running - 1.
+            ENDMETHOD.
+          ENDCLASS.
+
+          DATA go_receiver TYPE REF TO lcl_receiver.
+          DATA gt_company_codes TYPE STANDARD TABLE OF bukrs WITH DEFAULT KEY.
+          DATA gv_task TYPE c LENGTH 8.
+          DATA gv_number TYPE n LENGTH 5.
+          DATA gv_message TYPE c LENGTH 255.
+
+          START-OF-SELECTION.
+            CREATE OBJECT go_receiver.
+            SELECT bukrs FROM t001 INTO TABLE gt_company_codes WHERE bukrs IN s_bukrs.
+            LOOP AT gt_company_codes INTO gv_bukrs.
+              gv_number = sy-tabix.
+              CONCATENATE 'ZFA' gv_number INTO gv_task.
+              WAIT UNTIL go_receiver->mv_running < 5 UP TO 600 SECONDS.
+              CALL FUNCTION 'Z_FA_OPEN_ITEMS_COUNT'
+                STARTING NEW TASK gv_task
+                DESTINATION IN GROUP DEFAULT
+                CALLING go_receiver->on_end_of_task ON END OF TASK
+                EXPORTING
+                  iv_bukrs              = gv_bukrs
+                EXCEPTIONS
+                  system_failure        = 1 MESSAGE gv_message
+                  communication_failure = 2 MESSAGE gv_message
+                  resource_failure      = 3
+                  OTHERS                = 4.
+              IF sy-subrc = 0.
+                go_receiver->mv_running = go_receiver->mv_running + 1.
+              ELSE.
+                WRITE: / gv_bukrs, 'not started, return code', sy-subrc, gv_message.
+              ENDIF.
+            ENDLOOP.
+            WAIT FOR ASYNCHRONOUS TASKS UNTIL go_receiver->mv_running = 0 UP TO 600 SECONDS.
+      - name: task_id_longer_than_8
+        reason: The task IDs have up to 19 characters, but the 7.31 keyword documentation allows at most eight.
+        caught_by: forbidden_pattern
+        response: |
+          * file: src/zfa_parallel_counts.prog.abap
+          REPORT zfa_parallel_counts.
+
+          DATA gv_bukrs TYPE bukrs.
+          SELECT-OPTIONS s_bukrs FOR gv_bukrs.
+
+          CLASS lcl_receiver DEFINITION FINAL.
+            PUBLIC SECTION.
+              DATA mv_running TYPE i.
+              METHODS on_end_of_task IMPORTING p_task TYPE clike.
+          ENDCLASS.
+
+          CLASS lcl_receiver IMPLEMENTATION.
+            METHOD on_end_of_task.
+              DATA lv_items TYPE i.
+              DATA lv_message TYPE c LENGTH 255.
+              RECEIVE RESULTS FROM FUNCTION 'Z_FA_OPEN_ITEMS_COUNT'
+                IMPORTING
+                  ev_items              = lv_items
+                EXCEPTIONS
+                  system_failure        = 1 MESSAGE lv_message
+                  communication_failure = 2 MESSAGE lv_message
+                  OTHERS                = 3.
+              WRITE: / p_task, lv_items, lv_message.
+              mv_running = mv_running - 1.
+            ENDMETHOD.
+          ENDCLASS.
+
+          DATA go_receiver TYPE REF TO lcl_receiver.
+          DATA gt_company_codes TYPE STANDARD TABLE OF bukrs WITH DEFAULT KEY.
+          DATA gv_task TYPE c LENGTH 32.
+          DATA gv_message TYPE c LENGTH 255.
+
+          START-OF-SELECTION.
+            CREATE OBJECT go_receiver.
+            SELECT bukrs FROM t001 INTO TABLE gt_company_codes WHERE bukrs IN s_bukrs.
+            LOOP AT gt_company_codes INTO gv_bukrs.
+              CONCATENATE 'ZFA_OPEN_ITEMS_' gv_bukrs INTO gv_task.
+              WAIT UNTIL go_receiver->mv_running < 5 UP TO 600 SECONDS.
+              CALL FUNCTION 'Z_FA_OPEN_ITEMS_COUNT'
+                STARTING NEW TASK gv_task
+                DESTINATION IN GROUP DEFAULT
+                CALLING go_receiver->on_end_of_task ON END OF TASK
+                EXPORTING
+                  iv_bukrs              = gv_bukrs
+                EXCEPTIONS
+                  system_failure        = 1 MESSAGE gv_message
+                  communication_failure = 2 MESSAGE gv_message
+                  resource_failure      = 3
+                  OTHERS                = 4.
+              IF sy-subrc = 0.
+                go_receiver->mv_running = go_receiver->mv_running + 1.
+              ELSE.
+                WRITE: / gv_bukrs, 'not started, return code', sy-subrc, gv_message.
+              ENDIF.
+            ENDLOOP.
+            WAIT UNTIL go_receiver->mv_running = 0 UP TO 600 SECONDS.
+
+  - name: idoc_outbound_commit_ehp6
+    description: Outbound IDoc with MASTER_IDOC_DISTRIBUTE, receivers from the distribution model, an explicit COMMIT WORK, and a check for an empty result, in classic syntax for SAP_BASIS 7.31.
+    prompt: |
+      On ECC 6.0 EHP6 (SAP_BASIS 7.31, Oracle) we must send orders from our tables ZFA_ORDER
+      (ORDER_ID, CUSTOMER, ORDER_DATE, CURRENCY, EXT_REF) and ZFA_ORDER_ITEM (ORDER_ID,
+      ITEM_NO, MATERIAL, QUANTITY, UNIT) to a partner system as IDocs of our message type
+      ZFA_ORDER, basic type ZFA_ORDER01. Segment Z1FA_ORDER_HDR has ORDER_ID, CUSTOMER,
+      ORDER_DATE, CURRENCY, and EXT_REF; segment Z1FA_ORDER_ITM has MATERIAL, QUANTITY, and
+      UNIT. The receiver is maintained in the distribution model. Write a report that sends
+      one order and tells the user what happened, and list the configuration we need.
+    environment:
+      product: ecc
+      release: ehp6
+      database: anydb
+      deployment: on-premise
+    expected_patterns:
+      - '(?i)CALL\s+FUNCTION\s+''MASTER_IDOC_DISTRIBUTE'''
+      - '(?i)^[ \t]*COMMIT\s+WORK\b'
+      - '(?i)-mestyp\s*=\s*''ZFA_ORDER'''
+      - '(?i)-idoctp\s*=\s*''ZFA_ORDER01'''
+      - '(?i)-segnam\s*=\s*''Z1FA_ORDER_HDR'''
+      - '(?i)communication_idoc_control\s*=\s*(\w+)[\s\S]*?(?:\b\1(?:\[\])?\s+IS\s+(?:NOT\s+)?INITIAL|\blines\s*\(\s*\1\s*\)|\bDESCRIBE\s+TABLE\s+\1\b)'
+      - '(?i)\bBD64\b'
+      - '(?i)\bWE20\b'
+      - '(?i)\bWE21\b'
+    forbidden_patterns:
+      - '(?i)(?<![\s\S])(?![\s\S]*-rcvprt\s*=)[\s\S]*-rcvprn\s*='
+    tags: [idoc, ale, outbound, commit, ecc]
+    validators: [abaplint]
+    mock_response: |
+      Target assumed: SAP ECC 6.0 EHP6, SAP_BASIS 7.31, Oracle. MASTER_IDOC_DISTRIBUTE and the
+      IDoc interface have not changed for many releases, and the report uses classic syntax.
+
+      How the report works:
+
+      - The control record gets only MESTYP and IDOCTP. RCVPRT and RCVPRN stay empty, so ALE
+        takes the receivers from the distribution model (BD64).
+      - Each data record holds SEGNAM and the segment structure in SDATA.
+      - The explicit commit after MASTER_IDOC_DISTRIBUTE is mandatory: without it the IDoc is
+        created but never sent, and the database commit at the end of the program is not
+        enough.
+      - If the distribution model has no receiver, the function raises no exception and
+        returns an empty COMMUNICATION_IDOC_CONTROL table, so the report checks it.
+
+      ```abap
+      * file: src/zfa_order_idoc_send.prog.abap
+      REPORT zfa_order_idoc_send.
+
+      PARAMETERS p_order TYPE zfa_order_id OBLIGATORY.
+
+      DATA gs_order TYPE zfa_order.
+      DATA gt_items TYPE STANDARD TABLE OF zfa_order_item WITH DEFAULT KEY.
+      DATA gs_item TYPE zfa_order_item.
+      DATA gs_header_segment TYPE z1fa_order_hdr.
+      DATA gs_item_segment TYPE z1fa_order_itm.
+      DATA gs_control TYPE edidc.
+      DATA gt_data TYPE STANDARD TABLE OF edidd WITH DEFAULT KEY.
+      DATA gs_data TYPE edidd.
+      DATA gt_created TYPE STANDARD TABLE OF edidc WITH DEFAULT KEY.
+      DATA gs_created TYPE edidc.
+
+      START-OF-SELECTION.
+        SELECT SINGLE * FROM zfa_order INTO gs_order WHERE order_id = p_order.
+        IF sy-subrc <> 0.
+          MESSAGE e398(00) WITH 'Order' p_order 'does not exist'.
+        ENDIF.
+        SELECT * FROM zfa_order_item INTO TABLE gt_items WHERE order_id = p_order.
+
+        " Receivers come from the distribution model (BD64): RCVPRT and RCVPRN stay empty.
+        gs_control-mestyp = 'ZFA_ORDER'.
+        gs_control-idoctp = 'ZFA_ORDER01'.
+
+        gs_header_segment-order_id   = gs_order-order_id.
+        gs_header_segment-customer   = gs_order-customer.
+        gs_header_segment-order_date = gs_order-order_date.
+        gs_header_segment-currency   = gs_order-currency.
+        gs_header_segment-ext_ref    = gs_order-ext_ref.
+        gs_data-segnam = 'Z1FA_ORDER_HDR'.
+        gs_data-sdata  = gs_header_segment.
+        APPEND gs_data TO gt_data.
+
+        LOOP AT gt_items INTO gs_item.
+          CLEAR: gs_item_segment, gs_data.
+          gs_item_segment-material = gs_item-material.
+          gs_item_segment-quantity = gs_item-quantity.
+          gs_item_segment-unit     = gs_item-unit.
+          gs_data-segnam = 'Z1FA_ORDER_ITM'.
+          gs_data-sdata  = gs_item_segment.
+          APPEND gs_data TO gt_data.
+        ENDLOOP.
+
+        CALL FUNCTION 'MASTER_IDOC_DISTRIBUTE'
+          EXPORTING
+            master_idoc_control            = gs_control
+          TABLES
+            communication_idoc_control     = gt_created
+            master_idoc_data               = gt_data
+          EXCEPTIONS
+            error_in_idoc_control          = 1
+            error_writing_idoc_status      = 2
+            error_in_idoc_data             = 3
+            sending_logical_system_unknown = 4
+            OTHERS                         = 5.
+        IF sy-subrc <> 0.
+          " 1: message type or IDoc type wrong; 4: own logical system missing (BD54, SCC4).
+          MESSAGE e398(00) WITH 'MASTER_IDOC_DISTRIBUTE failed, return code' sy-subrc.
+        ENDIF.
+
+        " Mandatory: without COMMIT WORK the IDocs exist but are never sent.
+        COMMIT WORK.
+
+        IF gt_created IS INITIAL.
+          WRITE: / 'No IDoc created: no receiver for ZFA_ORDER in the distribution model.'.
+        ENDIF.
+        LOOP AT gt_created INTO gs_created.
+          WRITE: / 'IDoc', gs_created-docnum, 'for', gs_created-rcvprn, 'status', gs_created-status.
+        ENDLOOP.
+      ```
+
+      Configuration in the sending system:
+
+      1. Logical systems in BD54, and the own logical system assigned to the client in SCC4.
+      2. SM59: an ABAP connection (type 3) to the partner system, with the logon data there.
+      3. WE21: a transactional RFC port that uses this destination.
+      4. BD64: a distribution model view with message type ZFA_ORDER from the own logical
+         system to the partner's logical system.
+      5. WE20: the outbound partner profile of the partner (partner type LS, BD82 can generate
+         it from BD64) with message type ZFA_ORDER, the port, output mode, and basic type
+         ZFA_ORDER01. WE82 must assign ZFA_ORDER to ZFA_ORDER01.
+
+      Watch the IDocs in WE02 or WE05 and the tRFC calls of the port in SM58. Not verified
+      offline: activation, the segment definitions, and a test with the partner system.
+    negative_responses:
+      - name: no_commit_after_distribute
+        reason: The IDoc is created but never dispatched, because the report does not call COMMIT WORK after MASTER_IDOC_DISTRIBUTE.
+        caught_by: expected_pattern
+        response: |
+          Configure BD64, WE21, and WE20, then run the report.
+
+          * file: src/zfa_order_idoc_send.prog.abap
+          REPORT zfa_order_idoc_send.
+
+          PARAMETERS p_order TYPE zfa_order_id OBLIGATORY.
+
+          DATA gs_order TYPE zfa_order.
+          DATA gs_header_segment TYPE z1fa_order_hdr.
+          DATA gs_control TYPE edidc.
+          DATA gt_data TYPE STANDARD TABLE OF edidd WITH DEFAULT KEY.
+          DATA gs_data TYPE edidd.
+          DATA gt_created TYPE STANDARD TABLE OF edidc WITH DEFAULT KEY.
+
+          START-OF-SELECTION.
+            SELECT SINGLE * FROM zfa_order INTO gs_order WHERE order_id = p_order.
+            gs_control-mestyp = 'ZFA_ORDER'.
+            gs_control-idoctp = 'ZFA_ORDER01'.
+            gs_header_segment-order_id = gs_order-order_id.
+            gs_header_segment-customer = gs_order-customer.
+            gs_data-segnam = 'Z1FA_ORDER_HDR'.
+            gs_data-sdata  = gs_header_segment.
+            APPEND gs_data TO gt_data.
+            CALL FUNCTION 'MASTER_IDOC_DISTRIBUTE'
+              EXPORTING
+                master_idoc_control        = gs_control
+              TABLES
+                communication_idoc_control = gt_created
+                master_idoc_data           = gt_data
+              EXCEPTIONS
+                OTHERS                     = 1.
+            IF gt_created IS INITIAL.
+              WRITE: / 'No receiver found.'.
+            ELSE.
+              WRITE: / 'IDoc sent.'.
+            ENDIF.
+      - name: receiver_number_without_type
+        reason: The report fills RCVPRN without RCVPRT; ALE needs both empty, to use the distribution model, or both filled.
+        caught_by: forbidden_pattern
+        response: |
+          Configure BD64, WE21, and WE20, then run the report.
+
+          * file: src/zfa_order_idoc_send.prog.abap
+          REPORT zfa_order_idoc_send.
+
+          PARAMETERS p_order TYPE zfa_order_id OBLIGATORY.
+
+          DATA gs_order TYPE zfa_order.
+          DATA gs_header_segment TYPE z1fa_order_hdr.
+          DATA gs_control TYPE edidc.
+          DATA gt_data TYPE STANDARD TABLE OF edidd WITH DEFAULT KEY.
+          DATA gs_data TYPE edidd.
+          DATA gt_created TYPE STANDARD TABLE OF edidc WITH DEFAULT KEY.
+
+          START-OF-SELECTION.
+            SELECT SINGLE * FROM zfa_order INTO gs_order WHERE order_id = p_order.
+            gs_control-mestyp = 'ZFA_ORDER'.
+            gs_control-idoctp = 'ZFA_ORDER01'.
+            gs_control-rcvprn = 'ZFAPARTNER'.
+            gs_header_segment-order_id = gs_order-order_id.
+            gs_header_segment-customer = gs_order-customer.
+            gs_data-segnam = 'Z1FA_ORDER_HDR'.
+            gs_data-sdata  = gs_header_segment.
+            APPEND gs_data TO gt_data.
+            CALL FUNCTION 'MASTER_IDOC_DISTRIBUTE'
+              EXPORTING
+                master_idoc_control        = gs_control
+              TABLES
+                communication_idoc_control = gt_created
+                master_idoc_data           = gt_data
+              EXCEPTIONS
+                OTHERS                     = 1.
+            COMMIT WORK.
+            IF gt_created IS INITIAL.
+              WRITE: / 'No IDoc created.'.
+            ENDIF.
+
+  - name: bapi_function_module_ehp4
+    description: BAPI-style remote-enabled function module that reports errors in RETURN, saves through the update task, and never commits, in classic syntax for SAP_BASIS 7.01.
+    prompt: |
+      Our ECC 6.0 EHP4 system (SAP_BASIS 7.01, SAP MaxDB) needs a remote-enabled function
+      module Z_FA_ORDER_CREATE in function group ZFA_ORDER_API that creates an order in our
+      tables ZFA_ORDER (ORDER_ID, CUSTOMER, ORDER_DATE, CURRENCY, EXT_REF) and ZFA_ORDER_ITEM
+      (ORDER_ID, ITEM_NO, MATERIAL, QUANTITY, UNIT). Other SAP systems will call it by RFC,
+      our own programs and our IDoc inbound processing call it locally. Input: IS_HEADER
+      (structure ZFA_S_ORDER_HEADER with CUSTOMER, ORDER_DATE, CURRENCY, EXT_REF) and the
+      table IT_ITEMS (ZFA_S_ORDER_ITEM with MATERIAL, QUANTITY, UNIT); output: EV_ORDER_ID
+      (data element ZFA_ORDER_ID). Order numbers come from number range object ZFA_ORDER,
+      interval 01. Messages are in message class ZFA_ORDER, and authorization object ZFA_ORDER
+      has the field ACTVT. Write it so that the callers stay in control of the transaction.
+    environment:
+      product: ecc
+      release: ehp4
+      database: anydb
+      deployment: on-premise
+    expected_patterns:
+      - '(?i)FUNCTION\s+z_fa_order_create\b'
+      - '(?i)\breturn\b[^\n]*\bbapiret2'
+      - '(?i)CALL\s+FUNCTION\s+''[^'']+''\s+IN\s+UPDATE\s+TASK'
+      - '(?i)AUTHORITY-CHECK\s+OBJECT\s+''ZFA_ORDER'''
+      - '(?i)^[ \t]*MESSAGE\s+(?:[ewsiax]\d{3}\(\w+\)|ID\b)[^.]*\bINTO\b'
+      - '(?i)\btestrun\b'
+      - '(?i)\bNUMBER_GET_NEXT\b'
+    forbidden_patterns:
+      - '(?i)^[ \t]*COMMIT\s+WORK\b'
+      - '(?i)^[ \t]*CALL\s+FUNCTION\s+''BAPI_TRANSACTION_COMMIT'''
+      - '(?i)^[ \t]*(?:CALL\s+TRANSACTION|SUBMIT)\b'
+      # Type E only: an update module may end with a termination message (type A).
+      - '(?i)^[ \t]*MESSAGE\s+(?:e\d{3}\(\w+\)|ID\s+\S+\s+TYPE\s+''E'')(?!(?:''[^''\n]*''|"[^\n]*|\n\*[^\n]*|[^.''"])*?\bINTO\b)'
+    tags: [bapi, rfc, commit, ecc, release-aware]
+    validators: [abaplint]
+    mock_response: |
+      Target assumed: SAP ECC 6.0 EHP4, SAP_BASIS 7.01, SAP MaxDB. The code uses classic
+      syntax and 'X' instead of abap_true, because on 7.01 the constants of type pool ABAP need
+      TYPE-POOLS abap.
+
+      Set the attribute "Remote-Enabled Module" in SE37 and maintain the interface shown in
+      the comment block. The rules the function follows, from SAP's BAPI programming guide:
+
+      - It never commits and calls no transaction or report. The order is written by the
+        update module Z_FA_ORDER_SAVE, which runs only when the caller commits, so a caller
+        can post several documents in one LUW or roll everything back. An RFC call ends with a
+        database commit in the called system, which is another reason to write only through
+        the update task.
+      - Every error goes into RETURN (BAPIRET2). MESSAGE ... INTO fills the text without
+        sending a message, because a message of type E or A would end an RFC call with
+        SYSTEM_FAILURE. The interface declares no class-based exceptions, which cannot cross
+        RFC in customer releases.
+      - It checks the authorization itself; S_RFC only decides who may call the function
+        group.
+      - IV_TESTRUN runs all checks, writes nothing, and draws no order number.
+      - All parameters are passed by value, and RFC does not check their typing, so the
+        function validates its input.
+
+      ```abap
+      * file: src/zfa_order_api.fugr.z_fa_order_create.abap
+      FUNCTION z_fa_order_create.
+      *"----------------------------------------------------------------------
+      *"*"Local Interface:
+      *"  IMPORTING
+      *"     VALUE(IS_HEADER) TYPE  ZFA_S_ORDER_HEADER
+      *"     VALUE(IV_TESTRUN) TYPE  TESTRUN DEFAULT SPACE
+      *"  EXPORTING
+      *"     VALUE(EV_ORDER_ID) TYPE  ZFA_ORDER_ID
+      *"  TABLES
+      *"      IT_ITEMS STRUCTURE  ZFA_S_ORDER_ITEM
+      *"      RETURN STRUCTURE  BAPIRET2
+      *"----------------------------------------------------------------------
+        DATA lv_text TYPE bapi_msg.
+        DATA lv_lines TYPE i.
+        DATA lv_order_id TYPE zfa_order_id.
+
+        CLEAR ev_order_id.
+        CLEAR return[].
+
+        AUTHORITY-CHECK OBJECT 'ZFA_ORDER'
+          ID 'ACTVT' FIELD '01'.
+        IF sy-subrc <> 0.
+          MESSAGE e001(zfa_order) INTO lv_text.
+          PERFORM append_message TABLES return.
+          RETURN.
+        ENDIF.
+
+      * Validate everything first and report all errors together.
+        IF is_header-customer IS INITIAL.
+          MESSAGE e002(zfa_order) INTO lv_text.
+          PERFORM append_message TABLES return.
+        ENDIF.
+        DESCRIBE TABLE it_items LINES lv_lines.
+        IF lv_lines = 0.
+          MESSAGE e003(zfa_order) INTO lv_text.
+          PERFORM append_message TABLES return.
+        ENDIF.
+        READ TABLE return TRANSPORTING NO FIELDS WITH KEY type = 'E'.
+        IF sy-subrc = 0.
+          RETURN.
+        ENDIF.
+
+        IF iv_testrun = 'X'.
+          MESSAGE s004(zfa_order) INTO lv_text.
+          PERFORM append_message TABLES return.
+          RETURN.
+        ENDIF.
+
+        CALL FUNCTION 'NUMBER_GET_NEXT'
+          EXPORTING
+            nr_range_nr = '01'
+            object      = 'ZFA_ORDER'
+          IMPORTING
+            number      = lv_order_id
+          EXCEPTIONS
+            OTHERS      = 1.
+        IF sy-subrc <> 0.
+          MESSAGE e005(zfa_order) INTO lv_text.
+          PERFORM append_message TABLES return.
+          RETURN.
+        ENDIF.
+
+      * Registered now, executed when the caller commits.
+        CALL FUNCTION 'Z_FA_ORDER_SAVE' IN UPDATE TASK
+          EXPORTING
+            iv_order_id = lv_order_id
+            is_header   = is_header
+          TABLES
+            it_items    = it_items.
+
+        ev_order_id = lv_order_id.
+        MESSAGE s010(zfa_order) WITH lv_order_id INTO lv_text.
+        PERFORM append_message TABLES return.
+      ENDFUNCTION.
+      ```
+
+      The helper that turns the current message into a RETURN line, in an include of the
+      same function group:
+
+      ```abap
+      * file: src/zfa_order_api.fugr.lzfa_order_apif01.abap
+      *----------------------------------------------------------------------*
+      * Append the current system message to RETURN. Call it directly after
+      * MESSAGE ... INTO, which fills sy-msgty, sy-msgid, sy-msgno, sy-msgv1-4.
+      *----------------------------------------------------------------------*
+      FORM append_message TABLES pt_return STRUCTURE bapiret2.
+        DATA ls_return TYPE bapiret2.
+
+        ls_return-type       = sy-msgty.
+        ls_return-id         = sy-msgid.
+        ls_return-number     = sy-msgno.
+        ls_return-message_v1 = sy-msgv1.
+        ls_return-message_v2 = sy-msgv2.
+        ls_return-message_v3 = sy-msgv3.
+        ls_return-message_v4 = sy-msgv4.
+        MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+                WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4
+                INTO ls_return-message.
+        APPEND ls_return TO pt_return.
+      ENDFORM.
+      ```
+
+      The update module (SE37, processing type Update Module, start immediately). It runs in
+      the update task after the caller's commit; a termination message there rolls back the
+      whole update, so no half-saved order remains:
+
+      ```abap
+      * file: src/zfa_order_api.fugr.z_fa_order_save.abap
+      FUNCTION z_fa_order_save.
+      *"----------------------------------------------------------------------
+      *"*"Local Interface:
+      *"  IMPORTING
+      *"     VALUE(IV_ORDER_ID) TYPE  ZFA_ORDER_ID
+      *"     VALUE(IS_HEADER) TYPE  ZFA_S_ORDER_HEADER
+      *"  TABLES
+      *"      IT_ITEMS STRUCTURE  ZFA_S_ORDER_ITEM
+      *"----------------------------------------------------------------------
+        DATA ls_order TYPE zfa_order.
+        DATA ls_item TYPE zfa_s_order_item.
+        DATA ls_db_item TYPE zfa_order_item.
+        DATA lt_db_items TYPE STANDARD TABLE OF zfa_order_item WITH DEFAULT KEY.
+        DATA lv_item_no TYPE i.
+
+        MOVE-CORRESPONDING is_header TO ls_order.
+        ls_order-order_id = iv_order_id.
+        LOOP AT it_items INTO ls_item.
+          lv_item_no = lv_item_no + 1.
+          CLEAR ls_db_item.
+          MOVE-CORRESPONDING ls_item TO ls_db_item.
+          ls_db_item-order_id = iv_order_id.
+          ls_db_item-item_no  = lv_item_no.
+          APPEND ls_db_item TO lt_db_items.
+        ENDLOOP.
+
+        INSERT zfa_order FROM ls_order.
+        IF sy-subrc <> 0.
+          MESSAGE a398(00) WITH 'Order' iv_order_id 'already exists'.
+        ENDIF.
+        INSERT zfa_order_item FROM TABLE lt_db_items.
+      ENDFUNCTION.
+      ```
+
+      Callers check RETURN for type E or A and then call BAPI_TRANSACTION_COMMIT or
+      BAPI_TRANSACTION_ROLLBACK; remote callers do so through the same destination. Create
+      messages 001 to 005 and 010 in message class ZFA_ORDER, and give RFC users S_RFC for
+      function group ZFA_ORDER_API.
+
+      Not verified offline: the interface, which SE37 keeps outside the source, activation,
+      and the field names of ZFA_ORDER and ZFA_ORDER_ITEM.
+    negative_responses:
+      - name: commit_in_function_module
+        reason: The function module commits by itself, so its callers lose control of the LUW and cannot roll back or combine calls.
+        caught_by: forbidden_pattern
+        response: |
+          * file: src/zfa_order_api.fugr.z_fa_order_create.abap
+          FUNCTION z_fa_order_create.
+          *"----------------------------------------------------------------------
+          *"*"Local Interface:
+          *"  IMPORTING
+          *"     VALUE(IS_HEADER) TYPE  ZFA_S_ORDER_HEADER
+          *"     VALUE(IV_TESTRUN) TYPE  TESTRUN DEFAULT SPACE
+          *"  EXPORTING
+          *"     VALUE(EV_ORDER_ID) TYPE  ZFA_ORDER_ID
+          *"  TABLES
+          *"      IT_ITEMS STRUCTURE  ZFA_S_ORDER_ITEM
+          *"      RETURN STRUCTURE  BAPIRET2
+          *"----------------------------------------------------------------------
+            DATA lv_text TYPE bapi_msg.
+            DATA ls_return TYPE bapiret2.
+            DATA lv_order_id TYPE zfa_order_id.
+
+            AUTHORITY-CHECK OBJECT 'ZFA_ORDER'
+              ID 'ACTVT' FIELD '01'.
+            IF sy-subrc <> 0.
+              MESSAGE e001(zfa_order) INTO lv_text.
+              ls_return-type    = sy-msgty.
+              ls_return-id      = sy-msgid.
+              ls_return-number  = sy-msgno.
+              ls_return-message = lv_text.
+              APPEND ls_return TO return.
+              RETURN.
+            ENDIF.
+            IF iv_testrun = 'X'.
+              RETURN.
+            ENDIF.
+            CALL FUNCTION 'NUMBER_GET_NEXT'
+              EXPORTING
+                nr_range_nr = '01'
+                object      = 'ZFA_ORDER'
+              IMPORTING
+                number      = lv_order_id
+              EXCEPTIONS
+                OTHERS      = 1.
+            CALL FUNCTION 'Z_FA_ORDER_SAVE' IN UPDATE TASK
+              EXPORTING
+                iv_order_id = lv_order_id
+                is_header   = is_header
+              TABLES
+                it_items    = it_items.
+            COMMIT WORK.
+            ev_order_id = lv_order_id.
+          ENDFUNCTION.
+      - name: error_message_ends_rfc
+        reason: A missing customer is reported with MESSAGE of type E, which ends a remote call with SYSTEM_FAILURE instead of a RETURN entry.
+        caught_by: forbidden_pattern
+        response: |
+          * file: src/zfa_order_api.fugr.z_fa_order_create.abap
+          FUNCTION z_fa_order_create.
+          *"----------------------------------------------------------------------
+          *"*"Local Interface:
+          *"  IMPORTING
+          *"     VALUE(IS_HEADER) TYPE  ZFA_S_ORDER_HEADER
+          *"     VALUE(IV_TESTRUN) TYPE  TESTRUN DEFAULT SPACE
+          *"  EXPORTING
+          *"     VALUE(EV_ORDER_ID) TYPE  ZFA_ORDER_ID
+          *"  TABLES
+          *"      IT_ITEMS STRUCTURE  ZFA_S_ORDER_ITEM
+          *"      RETURN STRUCTURE  BAPIRET2
+          *"----------------------------------------------------------------------
+            DATA lv_text TYPE bapi_msg.
+            DATA ls_return TYPE bapiret2.
+            DATA lv_order_id TYPE zfa_order_id.
+
+            AUTHORITY-CHECK OBJECT 'ZFA_ORDER'
+              ID 'ACTVT' FIELD '01'.
+            IF sy-subrc <> 0.
+              MESSAGE e001(zfa_order) INTO lv_text.
+              ls_return-type    = sy-msgty.
+              ls_return-id      = sy-msgid.
+              ls_return-number  = sy-msgno.
+              ls_return-message = lv_text.
+              APPEND ls_return TO return.
+              RETURN.
+            ENDIF.
+            IF is_header-customer IS INITIAL.
+              MESSAGE e002(zfa_order).
+            ENDIF.
+            IF iv_testrun = 'X'.
+              RETURN.
+            ENDIF.
+            CALL FUNCTION 'NUMBER_GET_NEXT'
+              EXPORTING
+                nr_range_nr = '01'
+                object      = 'ZFA_ORDER'
+              IMPORTING
+                number      = lv_order_id
+              EXCEPTIONS
+                OTHERS      = 1.
+            CALL FUNCTION 'Z_FA_ORDER_SAVE' IN UPDATE TASK
+              EXPORTING
+                iv_order_id = lv_order_id
+                is_header   = is_header
+              TABLES
+                it_items    = it_items.
+            ev_order_id = lv_order_id.
+          ENDFUNCTION.

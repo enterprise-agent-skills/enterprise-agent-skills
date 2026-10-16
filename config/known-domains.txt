@@ -1,0 +1,43 @@
+# Domains that skills, agents, and their references may link to.
+# Used by `vally lint --known-domains` (npm run eval:vally). One entry per line.
+# A bare domain also matches its subdomains. Add a domain in the same pull request
+# that introduces the first link to it, and explain why in the PR description.
+
+# Standards and specifications
+agentskills.io
+agent-plugins.org
+modelcontextprotocol.io
+
+# SAP
+help.sap.com
+api.sap.com
+community.sap.com
+developers.sap.com
+learning.sap.com
+github.com/SAP
+github.com/SAP-samples
+github.com/SAP-docs
+github.com/abapGit
+github.com/abaplint
+github.com/UI5
+github.com/cap-js
+raw.githubusercontent.com/SAP
+
+# Microsoft
+learn.microsoft.com
+github.com/microsoft
+github.com/MicrosoftDocs
+app.fabric.microsoft.com
+# Azure Key Vault endpoints appear in examples with placeholder vault names (contoso-*).
+vault.azure.net
+
+# Salesforce
+developer.salesforce.com
+help.salesforce.com
+trailhead.salesforce.com
+github.com/forcedotcom
+github.com/salesforcecli
+github.com/trailheadapps
+
+# Delta Lake
+docs.delta.io

@@ -1,0 +1,628 @@
+# yaml-language-server: $schema=../../../schemas/skill-scenarios.schema.json
+# Scenarios for sap-abap-standard. Each scenario names its SAP target; ABAP answers are parsed
+# with abaplint using the grammar of that release (config/sap-environments.yaml).
+
+config:
+  model: claude-sonnet-4.6
+  max_tokens: 6000
+  temperature: 0.2
+
+# Default target: ECC 6.0 EHP8 (SAP_BASIS 7.50) on a database other than SAP HANA.
+environment:
+  product: ecc
+  release: ehp8
+  database: anydb
+  deployment: on-premise
+
+scenarios:
+  - name: ecc_ehp6_sales_report
+    description: Classic syntax for an older release; hosting on Azure must not change the answer.
+    prompt: |
+      We run SAP ECC 6.0 EHP6 (SAP_BASIS 7.31) on Oracle, hosted on Azure virtual machines.
+      Write a report that lists sales orders for one sales organization and a creation date
+      range, checks that the user may display that sales organization, and shows the result
+      in an ALV grid. Include a unit test for any calculation logic.
+    environment:
+      product: ecc
+      release: ehp6
+      database: anydb
+      deployment: azure-iaas
+    expected_patterns:
+      - '(?i)REPORT\s+z'
+      - '(?i)SELECT-OPTIONS'
+      - '(?i)AUTHORITY-CHECK\s+OBJECT'
+      - '(?i)sy-subrc'
+      - '(?i)cl_salv_table=>factory'
+      - '(?i)FOR\s+TESTING'
+    forbidden_patterns:
+      - '(?i)LOOP\s+AT(?:(?!ENDLOOP)[\s\S])*?\bSELECT\b'
+      - '(?i)WHERE\s+\(\s*\w+\s*\)'
+    tags: [basic, ecc, release-aware, iaas]
+    validators: [abaplint]
+    mock_response: |
+      Target assumed: SAP ECC 6.0 EHP6, SAP_BASIS 7.31, Oracle. The Azure hosting does not
+      change the ABAP, so the program uses classic syntax only (no 7.40 features).
+
+      * file: src/zfa_sales_orders_702.prog.abap
+      REPORT zfa_sales_orders_702.
+
+      DATA gv_erdat TYPE erdat.
+
+      PARAMETERS p_vkorg TYPE vkorg OBLIGATORY.
+      SELECT-OPTIONS s_erdat FOR gv_erdat OBLIGATORY.
+
+      CLASS lcl_report DEFINITION FINAL.
+        PUBLIC SECTION.
+          TYPES:
+            BEGIN OF ty_order,
+              vbeln TYPE vbak-vbeln,
+              erdat TYPE vbak-erdat,
+              auart TYPE vbak-auart,
+              kunnr TYPE vbak-kunnr,
+              netwr TYPE vbak-netwr,
+              waerk TYPE vbak-waerk,
+            END OF ty_order,
+            tt_orders TYPE STANDARD TABLE OF ty_order WITH DEFAULT KEY,
+            BEGIN OF ty_total,
+              waerk TYPE vbak-waerk,
+              netwr TYPE vbak-netwr,
+            END OF ty_total,
+            tt_totals TYPE SORTED TABLE OF ty_total WITH UNIQUE KEY waerk,
+            tt_erdat_range TYPE RANGE OF erdat.
+
+          METHODS select_orders
+            IMPORTING iv_vkorg         TYPE vkorg
+                      it_erdat         TYPE tt_erdat_range
+            RETURNING value(rt_orders) TYPE tt_orders.
+
+          METHODS total_by_currency
+            IMPORTING it_orders        TYPE tt_orders
+            RETURNING value(rt_totals) TYPE tt_totals.
+
+          METHODS display
+            CHANGING ct_orders TYPE tt_orders.
+      ENDCLASS.
+
+      CLASS lcl_report IMPLEMENTATION.
+        METHOD select_orders.
+          SELECT vbeln erdat auart kunnr netwr waerk
+            FROM vbak
+            INTO TABLE rt_orders
+            UP TO 5000 ROWS
+            WHERE vkorg = iv_vkorg
+              AND erdat IN it_erdat
+            ORDER BY vbeln.
+        ENDMETHOD.
+
+        METHOD total_by_currency.
+          DATA ls_order TYPE ty_order.
+          DATA ls_total TYPE ty_total.
+          LOOP AT it_orders INTO ls_order.
+            ls_total-waerk = ls_order-waerk.
+            ls_total-netwr = ls_order-netwr.
+            COLLECT ls_total INTO rt_totals.
+          ENDLOOP.
+        ENDMETHOD.
+
+        METHOD display.
+          DATA lo_alv TYPE REF TO cl_salv_table.
+          DATA lo_functions TYPE REF TO cl_salv_functions_list.
+          DATA lo_columns TYPE REF TO cl_salv_columns_table.
+          DATA lx_salv TYPE REF TO cx_salv_msg.
+          TRY.
+              cl_salv_table=>factory( IMPORTING r_salv_table = lo_alv
+                                      CHANGING  t_table      = ct_orders ).
+              lo_functions = lo_alv->get_functions( ).
+              lo_functions->set_all( abap_true ).
+              lo_columns = lo_alv->get_columns( ).
+              lo_columns->set_optimize( abap_true ).
+              lo_alv->display( ).
+            CATCH cx_salv_msg INTO lx_salv.
+              MESSAGE lx_salv TYPE 'E'.
+          ENDTRY.
+        ENDMETHOD.
+      ENDCLASS.
+
+      CLASS ltc_report DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
+        PRIVATE SECTION.
+          METHODS sums_amounts_per_currency FOR TESTING.
+      ENDCLASS.
+
+      CLASS ltc_report IMPLEMENTATION.
+        METHOD sums_amounts_per_currency.
+          DATA lo_report TYPE REF TO lcl_report.
+          DATA lt_orders TYPE lcl_report=>tt_orders.
+          DATA ls_order TYPE lcl_report=>ty_order.
+          DATA lt_totals TYPE lcl_report=>tt_totals.
+          DATA ls_total TYPE lcl_report=>ty_total.
+
+          ls_order-netwr = '100.00'.
+          ls_order-waerk = 'EUR'.
+          APPEND ls_order TO lt_orders.
+          ls_order-netwr = '50.00'.
+          APPEND ls_order TO lt_orders.
+          ls_order-netwr = '70.00'.
+          ls_order-waerk = 'USD'.
+          APPEND ls_order TO lt_orders.
+
+          CREATE OBJECT lo_report.
+          lt_totals = lo_report->total_by_currency( lt_orders ).
+
+          cl_abap_unit_assert=>assert_equals( act = lines( lt_totals ) exp = 2 ).
+          READ TABLE lt_totals INTO ls_total WITH TABLE KEY waerk = 'EUR'.
+          cl_abap_unit_assert=>assert_subrc( exp = 0 ).
+          cl_abap_unit_assert=>assert_equals( act = ls_total-netwr exp = '150.00' ).
+        ENDMETHOD.
+      ENDCLASS.
+
+      DATA go_report TYPE REF TO lcl_report.
+      DATA gt_orders TYPE lcl_report=>tt_orders.
+
+      AT SELECTION-SCREEN.
+        AUTHORITY-CHECK OBJECT 'V_VBAK_VKO'
+          ID 'VKORG' FIELD p_vkorg
+          ID 'VTWEG' DUMMY
+          ID 'SPART' DUMMY
+          ID 'ACTVT' FIELD '03'.
+        IF sy-subrc <> 0.
+          MESSAGE e398(00) WITH 'No display authorization for sales organization' p_vkorg.
+        ENDIF.
+
+      START-OF-SELECTION.
+        CREATE OBJECT go_report.
+        gt_orders = go_report->select_orders( iv_vkorg = p_vkorg
+                                              it_erdat = s_erdat[] ).
+        IF gt_orders IS INITIAL.
+          MESSAGE 'No sales orders found for the selection' TYPE 'S' DISPLAY LIKE 'W'.
+          RETURN.
+        ENDIF.
+        go_report->display( CHANGING ct_orders = gt_orders ).
+    negative_responses:
+      - name: modern_syntax_on_731
+        reason: Inline declarations, NEW, and @ host variables need SAP_BASIS 7.40; the program does not compile on 7.31.
+        caught_by: validator
+        response: |
+          * file: src/zfa_sales_orders_750.prog.abap
+          REPORT zfa_sales_orders_750.
+
+          DATA gv_erdat TYPE erdat.
+
+          PARAMETERS p_vkorg TYPE vkorg OBLIGATORY.
+          SELECT-OPTIONS s_erdat FOR gv_erdat OBLIGATORY.
+
+          CLASS lcl_report DEFINITION FINAL.
+            PUBLIC SECTION.
+              TYPES:
+                BEGIN OF ty_order,
+                  vbeln TYPE vbak-vbeln,
+                  erdat TYPE vbak-erdat,
+                  auart TYPE vbak-auart,
+                  kunnr TYPE vbak-kunnr,
+                  netwr TYPE vbak-netwr,
+                  waerk TYPE vbak-waerk,
+                END OF ty_order,
+                tt_orders TYPE STANDARD TABLE OF ty_order WITH EMPTY KEY,
+                BEGIN OF ty_total,
+                  waerk TYPE vbak-waerk,
+                  netwr TYPE vbak-netwr,
+                END OF ty_total,
+                tt_totals TYPE SORTED TABLE OF ty_total WITH UNIQUE KEY waerk,
+                tt_erdat_range TYPE RANGE OF erdat.
+
+              METHODS select_orders
+                IMPORTING iv_vkorg         TYPE vkorg
+                          it_erdat         TYPE tt_erdat_range
+                RETURNING VALUE(rt_orders) TYPE tt_orders.
+
+              METHODS total_by_currency
+                IMPORTING it_orders        TYPE tt_orders
+                RETURNING VALUE(rt_totals) TYPE tt_totals.
+
+              METHODS display
+                CHANGING ct_orders TYPE tt_orders.
+          ENDCLASS.
+
+          CLASS lcl_report IMPLEMENTATION.
+            METHOD select_orders.
+              SELECT vbeln, erdat, auart, kunnr, netwr, waerk
+                FROM vbak
+                WHERE vkorg = @iv_vkorg
+                  AND erdat IN @it_erdat
+                ORDER BY vbeln
+                INTO TABLE @rt_orders
+                UP TO 5000 ROWS.
+            ENDMETHOD.
+
+            METHOD total_by_currency.
+              LOOP AT it_orders INTO DATA(ls_order)
+                   GROUP BY ls_order-waerk INTO DATA(lv_currency).
+                rt_totals = VALUE #( BASE rt_totals
+                                     ( waerk = lv_currency
+                                       netwr = REDUCE #( INIT sum = CONV vbak-netwr( 0 )
+                                                         FOR member IN GROUP lv_currency
+                                                         NEXT sum = sum + member-netwr ) ) ).
+              ENDLOOP.
+            ENDMETHOD.
+
+            METHOD display.
+              TRY.
+                  cl_salv_table=>factory( IMPORTING r_salv_table = DATA(lo_alv)
+                                          CHANGING  t_table      = ct_orders ).
+                  lo_alv->get_functions( )->set_all( abap_true ).
+                  lo_alv->get_columns( )->set_optimize( abap_true ).
+                  lo_alv->display( ).
+                CATCH cx_salv_msg INTO DATA(lx_salv).
+                  MESSAGE lx_salv TYPE 'E'.
+              ENDTRY.
+            ENDMETHOD.
+          ENDCLASS.
+
+          CLASS ltc_report DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
+            PRIVATE SECTION.
+              METHODS sums_amounts_per_currency FOR TESTING.
+          ENDCLASS.
+
+          CLASS ltc_report IMPLEMENTATION.
+            METHOD sums_amounts_per_currency.
+              DATA(lo_report) = NEW lcl_report( ).
+              DATA(lt_totals) = lo_report->total_by_currency(
+                VALUE #( ( netwr = '100.00' waerk = 'EUR' )
+                         ( netwr = '50.00'  waerk = 'EUR' )
+                         ( netwr = '70.00'  waerk = 'USD' ) ) ).
+              cl_abap_unit_assert=>assert_equals( act = lines( lt_totals ) exp = 2 ).
+              cl_abap_unit_assert=>assert_equals( act = lt_totals[ waerk = 'EUR' ]-netwr exp = '150.00' ).
+            ENDMETHOD.
+          ENDCLASS.
+
+          AT SELECTION-SCREEN.
+            AUTHORITY-CHECK OBJECT 'V_VBAK_VKO'
+              ID 'VKORG' FIELD p_vkorg
+              ID 'VTWEG' DUMMY
+              ID 'SPART' DUMMY
+              ID 'ACTVT' FIELD '03'.
+            IF sy-subrc <> 0.
+              MESSAGE |No display authorization for sales organization { p_vkorg }| TYPE 'E'.
+            ENDIF.
+
+          START-OF-SELECTION.
+            DATA(go_report) = NEW lcl_report( ).
+            DATA(gt_orders) = go_report->select_orders( iv_vkorg = p_vkorg
+                                                        it_erdat = s_erdat[] ).
+            IF gt_orders IS INITIAL.
+              MESSAGE 'No sales orders found for the selection' TYPE 'S' DISPLAY LIKE 'W'.
+              RETURN.
+            ENDIF.
+            go_report->display( CHANGING ct_orders = gt_orders ).
+      - name: select_in_loop
+        reason: One SELECT per order hits the database thousands of times on real data volumes.
+        caught_by: forbidden_pattern
+        response: |
+          * file: src/zfa_sales_orders_702.prog.abap
+          REPORT zfa_sales_orders_702.
+          DATA gv_erdat TYPE erdat.
+          DATA lt_vbak TYPE STANDARD TABLE OF vbak WITH DEFAULT KEY.
+          DATA ls_vbak TYPE vbak.
+          DATA lt_vbap TYPE STANDARD TABLE OF vbap WITH DEFAULT KEY.
+          DATA lo_alv TYPE REF TO cl_salv_table.
+          PARAMETERS p_vkorg TYPE vkorg OBLIGATORY.
+          SELECT-OPTIONS s_erdat FOR gv_erdat.
+          AT SELECTION-SCREEN.
+            AUTHORITY-CHECK OBJECT 'V_VBAK_VKO' ID 'VKORG' FIELD p_vkorg ID 'VTWEG' DUMMY ID 'SPART' DUMMY ID 'ACTVT' FIELD '03'.
+            IF sy-subrc <> 0.
+              MESSAGE e398(00) WITH 'No authorization' p_vkorg.
+            ENDIF.
+          START-OF-SELECTION.
+            SELECT * FROM vbak INTO TABLE lt_vbak WHERE vkorg = p_vkorg AND erdat IN s_erdat.
+            LOOP AT lt_vbak INTO ls_vbak.
+              SELECT * FROM vbap APPENDING TABLE lt_vbap WHERE vbeln = ls_vbak-vbeln.
+            ENDLOOP.
+            cl_salv_table=>factory( IMPORTING r_salv_table = lo_alv CHANGING t_table = lt_vbak ).
+            lo_alv->display( ).
+
+  - name: s4hana_2023_sales_report
+    description: Modern syntax where the release supports it, without tables removed in S/4HANA.
+    prompt: |
+      Same requirement on our S/4HANA 2023 on-premise system: a report of sales orders by sales
+      organization and creation date, with an authorization check, ALV output, and a unit
+      test. Use current ABAP syntax.
+    environment:
+      product: s4hana
+      release: "2023"
+    expected_patterns:
+      - '(?i)REPORT\s+z'
+      - '(?i)WHERE\s+vkorg\s*=\s*@'
+      - '(?i)AUTHORITY-CHECK\s+OBJECT'
+      - '(?i)cl_salv_table=>factory'
+      - '(?i)FOR\s+TESTING'
+    forbidden_patterns:
+      - '(?i)\bvbuk\b'
+      - '(?i)\bvbup\b'
+      - '(?i)LOOP\s+AT(?:(?!ENDLOOP)[\s\S])*?\bSELECT\b'
+      - '(?i)WHERE\s+\(\s*\w+\s*\)'
+    tags: [basic, s4hana, release-aware]
+    validators: [abaplint]
+    mock_response: |
+      Target assumed: SAP S/4HANA 2023 (SAP_BASIS 7.58), Standard ABAP, SAP HANA.
+
+      * file: src/zfa_sales_orders_750.prog.abap
+      REPORT zfa_sales_orders_750.
+
+      DATA gv_erdat TYPE erdat.
+
+      PARAMETERS p_vkorg TYPE vkorg OBLIGATORY.
+      SELECT-OPTIONS s_erdat FOR gv_erdat OBLIGATORY.
+
+      CLASS lcl_report DEFINITION FINAL.
+        PUBLIC SECTION.
+          TYPES:
+            BEGIN OF ty_order,
+              vbeln TYPE vbak-vbeln,
+              erdat TYPE vbak-erdat,
+              auart TYPE vbak-auart,
+              kunnr TYPE vbak-kunnr,
+              netwr TYPE vbak-netwr,
+              waerk TYPE vbak-waerk,
+            END OF ty_order,
+            tt_orders TYPE STANDARD TABLE OF ty_order WITH EMPTY KEY,
+            BEGIN OF ty_total,
+              waerk TYPE vbak-waerk,
+              netwr TYPE vbak-netwr,
+            END OF ty_total,
+            tt_totals TYPE SORTED TABLE OF ty_total WITH UNIQUE KEY waerk,
+            tt_erdat_range TYPE RANGE OF erdat.
+
+          METHODS select_orders
+            IMPORTING iv_vkorg         TYPE vkorg
+                      it_erdat         TYPE tt_erdat_range
+            RETURNING VALUE(rt_orders) TYPE tt_orders.
+
+          METHODS total_by_currency
+            IMPORTING it_orders        TYPE tt_orders
+            RETURNING VALUE(rt_totals) TYPE tt_totals.
+
+          METHODS display
+            CHANGING ct_orders TYPE tt_orders.
+      ENDCLASS.
+
+      CLASS lcl_report IMPLEMENTATION.
+        METHOD select_orders.
+          SELECT vbeln, erdat, auart, kunnr, netwr, waerk
+            FROM vbak
+            WHERE vkorg = @iv_vkorg
+              AND erdat IN @it_erdat
+            ORDER BY vbeln
+            INTO TABLE @rt_orders
+            UP TO 5000 ROWS.
+        ENDMETHOD.
+
+        METHOD total_by_currency.
+          LOOP AT it_orders INTO DATA(ls_order)
+               GROUP BY ls_order-waerk INTO DATA(lv_currency).
+            rt_totals = VALUE #( BASE rt_totals
+                                 ( waerk = lv_currency
+                                   netwr = REDUCE #( INIT sum = CONV vbak-netwr( 0 )
+                                                     FOR member IN GROUP lv_currency
+                                                     NEXT sum = sum + member-netwr ) ) ).
+          ENDLOOP.
+        ENDMETHOD.
+
+        METHOD display.
+          TRY.
+              cl_salv_table=>factory( IMPORTING r_salv_table = DATA(lo_alv)
+                                      CHANGING  t_table      = ct_orders ).
+              lo_alv->get_functions( )->set_all( abap_true ).
+              lo_alv->get_columns( )->set_optimize( abap_true ).
+              lo_alv->display( ).
+            CATCH cx_salv_msg INTO DATA(lx_salv).
+              MESSAGE lx_salv TYPE 'E'.
+          ENDTRY.
+        ENDMETHOD.
+      ENDCLASS.
+
+      CLASS ltc_report DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
+        PRIVATE SECTION.
+          METHODS sums_amounts_per_currency FOR TESTING.
+      ENDCLASS.
+
+      CLASS ltc_report IMPLEMENTATION.
+        METHOD sums_amounts_per_currency.
+          DATA(lo_report) = NEW lcl_report( ).
+          DATA(lt_totals) = lo_report->total_by_currency(
+            VALUE #( ( netwr = '100.00' waerk = 'EUR' )
+                     ( netwr = '50.00'  waerk = 'EUR' )
+                     ( netwr = '70.00'  waerk = 'USD' ) ) ).
+          cl_abap_unit_assert=>assert_equals( act = lines( lt_totals ) exp = 2 ).
+          cl_abap_unit_assert=>assert_equals( act = lt_totals[ waerk = 'EUR' ]-netwr exp = '150.00' ).
+        ENDMETHOD.
+      ENDCLASS.
+
+      AT SELECTION-SCREEN.
+        AUTHORITY-CHECK OBJECT 'V_VBAK_VKO'
+          ID 'VKORG' FIELD p_vkorg
+          ID 'VTWEG' DUMMY
+          ID 'SPART' DUMMY
+          ID 'ACTVT' FIELD '03'.
+        IF sy-subrc <> 0.
+          MESSAGE |No display authorization for sales organization { p_vkorg }| TYPE 'E'.
+        ENDIF.
+
+      START-OF-SELECTION.
+        DATA(go_report) = NEW lcl_report( ).
+        DATA(gt_orders) = go_report->select_orders( iv_vkorg = p_vkorg
+                                                    it_erdat = s_erdat[] ).
+        IF gt_orders IS INITIAL.
+          MESSAGE 'No sales orders found for the selection' TYPE 'S' DISPLAY LIKE 'W'.
+          RETURN.
+        ENDIF.
+        go_report->display( CHANGING ct_orders = gt_orders ).
+    negative_responses:
+      - name: reads_removed_status_table
+        reason: VBUK was removed in S/4HANA; status fields are in VBAK.
+        caught_by: forbidden_pattern
+        response: |
+          * file: src/zfa_order_status.prog.abap
+          REPORT zfa_order_status.
+          PARAMETERS p_vkorg TYPE vkorg OBLIGATORY.
+          AT SELECTION-SCREEN.
+            AUTHORITY-CHECK OBJECT 'V_VBAK_VKO' ID 'VKORG' FIELD p_vkorg ID 'VTWEG' DUMMY ID 'SPART' DUMMY ID 'ACTVT' FIELD '03'.
+          START-OF-SELECTION.
+            SELECT vbak~vbeln, vbuk~gbstk FROM vbak INNER JOIN vbuk ON vbuk~vbeln = vbak~vbeln
+              WHERE vbak~vkorg = @p_vkorg INTO TABLE @DATA(lt_orders).
+            cl_salv_table=>factory( IMPORTING r_salv_table = DATA(lo_alv) CHANGING t_table = lt_orders ).
+            lo_alv->display( ).
+          CLASS ltc_dummy DEFINITION FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
+            PRIVATE SECTION.
+              METHODS run FOR TESTING.
+          ENDCLASS.
+          CLASS ltc_dummy IMPLEMENTATION.
+            METHOD run.
+            ENDMETHOD.
+          ENDCLASS.
+
+  - name: fix_for_all_entries
+    description: The empty driver table check for FOR ALL ENTRIES.
+    prompt: |
+      This code on our ECC 6.0 EHP7 system (SAP_BASIS 7.40 SP08) sometimes returns every row of
+      VBAP and runs for minutes. Fix it.
+
+        SELECT vbeln FROM vbak INTO TABLE lt_vbak WHERE vkorg = p_vkorg AND auart = p_auart.
+        SELECT vbeln posnr matnr kwmeng FROM vbap INTO TABLE lt_vbap
+          FOR ALL ENTRIES IN lt_vbak WHERE vbeln = lt_vbak-vbeln.
+    environment:
+      product: ecc
+      release: ehp7
+      support_package: 8
+      database: anydb
+    expected_patterns:
+      - '(?i)IS\s+NOT\s+INITIAL'
+      - '(?i)FOR\s+ALL\s+ENTRIES\s+IN'
+    forbidden_patterns:
+      - '(?i)LOOP\s+AT(?:(?!ENDLOOP)[\s\S])*?\bSELECT\b'
+    tags: [sql, performance, bugfix]
+    validators: [abaplint]
+    mock_response: |
+      When lt_vbak is empty, FOR ALL ENTRIES drops the WHERE condition and selects every row of
+      VBAP. Check the driver table first and remove duplicate keys.
+
+      * file: src/zfa_order_items.prog.abap
+      REPORT zfa_order_items.
+      TYPES: BEGIN OF ty_head,
+               vbeln TYPE vbak-vbeln,
+             END OF ty_head,
+             BEGIN OF ty_item,
+               vbeln  TYPE vbap-vbeln,
+               posnr  TYPE vbap-posnr,
+               matnr  TYPE vbap-matnr,
+               kwmeng TYPE vbap-kwmeng,
+             END OF ty_item.
+      DATA lt_vbak TYPE STANDARD TABLE OF ty_head WITH DEFAULT KEY.
+      DATA lt_vbap TYPE STANDARD TABLE OF ty_item WITH DEFAULT KEY.
+      PARAMETERS: p_vkorg TYPE vkorg OBLIGATORY,
+                  p_auart TYPE auart.
+      START-OF-SELECTION.
+        SELECT vbeln FROM vbak INTO TABLE lt_vbak WHERE vkorg = p_vkorg AND auart = p_auart.
+        SORT lt_vbak BY vbeln.
+        DELETE ADJACENT DUPLICATES FROM lt_vbak COMPARING vbeln.
+        IF lt_vbak IS NOT INITIAL.
+          SELECT vbeln posnr matnr kwmeng FROM vbap INTO TABLE lt_vbap
+            FOR ALL ENTRIES IN lt_vbak WHERE vbeln = lt_vbak-vbeln.
+        ENDIF.
+    negative_responses:
+      - name: no_empty_check
+        reason: Without the emptiness check the original defect remains.
+        caught_by: expected_pattern
+        response: |
+          * file: src/zfa_order_items.prog.abap
+          REPORT zfa_order_items.
+          DATA lt_vbak TYPE STANDARD TABLE OF vbak WITH DEFAULT KEY.
+          DATA lt_vbap TYPE STANDARD TABLE OF vbap WITH DEFAULT KEY.
+          PARAMETERS p_vkorg TYPE vkorg.
+          START-OF-SELECTION.
+            SELECT vbeln FROM vbak INTO CORRESPONDING FIELDS OF TABLE lt_vbak WHERE vkorg = p_vkorg.
+            SELECT vbeln posnr FROM vbap INTO CORRESPONDING FIELDS OF TABLE lt_vbap
+              FOR ALL ENTRIES IN lt_vbak WHERE vbeln = lt_vbak-vbeln.
+      - name: loop_instead_of_fae
+        reason: Replacing FOR ALL ENTRIES with a SELECT per row trades one problem for another.
+        caught_by: forbidden_pattern
+        response: |
+          * file: src/zfa_order_items.prog.abap
+          REPORT zfa_order_items.
+          DATA lt_vbak TYPE STANDARD TABLE OF vbak WITH DEFAULT KEY.
+          DATA ls_vbak TYPE vbak.
+          DATA lt_vbap TYPE STANDARD TABLE OF vbap WITH DEFAULT KEY.
+          PARAMETERS p_vkorg TYPE vkorg.
+          START-OF-SELECTION.
+            SELECT vbeln FROM vbak INTO CORRESPONDING FIELDS OF TABLE lt_vbak WHERE vkorg = p_vkorg.
+            IF lt_vbak IS NOT INITIAL.
+              LOOP AT lt_vbak INTO ls_vbak.
+                SELECT vbeln posnr FROM vbap APPENDING CORRESPONDING FIELDS OF TABLE lt_vbap
+                  WHERE vbeln = ls_vbak-vbeln.
+              ENDLOOP.
+            ENDIF.
+
+  - name: aggregate_on_anydb
+    description: Aggregate in the database; no SAP HANA-only features on another database.
+    prompt: |
+      On ECC 6.0 EHP8 running on Microsoft SQL Server, our report loops over all sales orders
+      of a sales organization to add up the net value per customer and currency. Make it
+      faster.
+    environment:
+      product: ecc
+      release: ehp8
+      database: anydb
+    expected_patterns:
+      - '(?i)SUM\s*\('
+      - '(?i)GROUP\s+BY'
+    forbidden_patterns:
+      - '(?i)LOOP\s+AT(?:(?!ENDLOOP)[\s\S])*?\bSELECT\b'
+    tags: [sql, performance, anydb]
+    validators: [abaplint]
+    mock_response: |
+      Let the database aggregate. This runs on any database; AMDP would need SAP HANA.
+
+      * file: src/zfa_sales_by_customer.prog.abap
+      REPORT zfa_sales_by_customer.
+      TYPES: BEGIN OF ty_total,
+               kunnr TYPE vbak-kunnr,
+               waerk TYPE vbak-waerk,
+               netwr TYPE vbak-netwr,
+             END OF ty_total.
+      DATA lt_totals TYPE STANDARD TABLE OF ty_total WITH EMPTY KEY.
+      PARAMETERS p_vkorg TYPE vkorg OBLIGATORY.
+      START-OF-SELECTION.
+        SELECT kunnr, waerk, SUM( netwr ) AS netwr
+          FROM vbak
+          WHERE vkorg = @p_vkorg
+          GROUP BY kunnr, waerk
+          ORDER BY kunnr, waerk
+          INTO TABLE @lt_totals.
+        TRY.
+            cl_salv_table=>factory( IMPORTING r_salv_table = DATA(lo_alv)
+                                    CHANGING  t_table      = lt_totals ).
+            lo_alv->display( ).
+          CATCH cx_salv_msg INTO DATA(lx_salv).
+            MESSAGE lx_salv TYPE 'E'.
+        ENDTRY.
+    negative_responses:
+      - name: amdp_on_anydb
+        reason: AMDP runs only on SAP HANA; this system uses SQL Server.
+        caught_by: environment
+        response: |
+          * file: src/zcl_fa_sales_amdp.clas.abap
+          CLASS zcl_fa_sales_amdp DEFINITION PUBLIC FINAL CREATE PUBLIC.
+            PUBLIC SECTION.
+              INTERFACES if_amdp_marker_hdb.
+              TYPES: BEGIN OF ty_total,
+                       kunnr TYPE vbak-kunnr,
+                       waerk TYPE vbak-waerk,
+                       netwr TYPE vbak-netwr,
+                     END OF ty_total,
+                     tt_totals TYPE STANDARD TABLE OF ty_total WITH EMPTY KEY.
+              CLASS-METHODS totals IMPORTING VALUE(iv_vkorg) TYPE vkorg EXPORTING VALUE(et_totals) TYPE tt_totals.
+          ENDCLASS.
+          CLASS zcl_fa_sales_amdp IMPLEMENTATION.
+            METHOD totals BY DATABASE PROCEDURE FOR HDB LANGUAGE SQLSCRIPT OPTIONS READ-ONLY USING vbak.
+              et_totals = SELECT kunnr, waerk, SUM(netwr) AS netwr FROM vbak
+                          WHERE vkorg = :iv_vkorg GROUP BY kunnr, waerk;
+            ENDMETHOD.
+          ENDCLASS.

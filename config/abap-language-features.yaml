@@ -1,0 +1,1001 @@
+# ABAP statements and expressions by the first SAP_BASIS release that supports them.
+# Schema: schemas/abap-language-features.schema.json.
+#
+# Used in two places:
+#   - tests/unit/abap-release-features.test.mjs parses every `test` program with the offline
+#     validator: it must be rejected on the release before `since` and accepted from `since`
+#     (or from `validator_from`) up to the newest release. Every `test_older` program must be
+#     accepted on the release before `since` and on the newest release.
+#   - scripts/build.mjs generates the release table in
+#     plugins/sap-abap/skills/sap-abap-standard/references/release-syntax.md.
+#
+# since:          SAP_BASIS release, with the support package for 7.40 ("7.40 SP08").
+# checked_by:     abaplint (grammar and syntax check) or rule:<id> (feature_rules in
+#                 config/sap-environments.yaml) where abaplint accepts the feature too early.
+# validator_from: only where the offline check accepts the feature later than SAP does.
+# file:           abapGit file name for non-program sources (CDS); otherwise the test is a
+#                 program body that follows REPORT zfa_feature.
+
+features:
+  # ------------------------------------------------------------------ 7.02 (ECC 6.0 EHP5)
+  - id: string-templates
+    name: String templates
+    since: "7.02"
+    syntax: "|Order { lv_vbeln } saved|"
+    older: CONCATENATE ... INTO, or WRITE ... TO
+    checked_by: abaplint
+    test: |
+      DATA lv_text TYPE string.
+      START-OF-SELECTION.
+        lv_text = |User { sy-uname }|.
+    test_older: |
+      DATA lv_text TYPE string.
+      START-OF-SELECTION.
+        CONCATENATE 'User' sy-uname INTO lv_text SEPARATED BY space.
+    source: ABAP Keyword Documentation, Changes in Release 7.02 (string expressions)
+
+  - id: concatenation-operator
+    name: Concatenation operator &&
+    since: "7.02"
+    syntax: "lv_text = lv_a && lv_b."
+    older: CONCATENATE lv_a lv_b INTO lv_text.
+    checked_by: rule:string-concat-operator
+    test: |
+      DATA lv_text TYPE string.
+      START-OF-SELECTION.
+        lv_text = 'User ' && sy-uname.
+    test_older: |
+      DATA lv_text TYPE string.
+      START-OF-SELECTION.
+        CONCATENATE 'User' sy-uname INTO lv_text SEPARATED BY space.
+    source: ABAP Keyword Documentation, Changes in Release 7.02 (string expressions)
+
+  - id: string-functions
+    name: Built-in string functions (condense( ), to_upper( ), substring( ), and others)
+    since: "7.02"
+    syntax: "lv_text = to_upper( lv_text )."
+    older: TRANSLATE ... TO UPPER CASE, CONDENSE, offset and length access
+    checked_by: rule:string-functions
+    test: |
+      DATA lv_text TYPE string.
+      START-OF-SELECTION.
+        lv_text = to_upper( sy-uname ).
+    test_older: |
+      DATA lv_text TYPE string.
+      START-OF-SELECTION.
+        lv_text = sy-uname.
+        TRANSLATE lv_text TO UPPER CASE.
+    source: ABAP Keyword Documentation, Changes in Release 7.02 (string functions)
+
+  - id: pragmas
+    name: "Pragmas such as ##NEEDED"
+    since: "7.02"
+    syntax: "DATA lv_unused TYPE i ##NEEDED."
+    older: 'Pseudo comments, for example "#EC NEEDED'
+    checked_by: abaplint
+    test: |
+      DATA lv_unused TYPE i ##NEEDED.
+    test_older: |
+      DATA lv_unused TYPE i. "#EC NEEDED
+    source: ABAP Keyword Documentation, Changes in Release 7.02 (pragmas)
+
+  - id: method-chaining
+    name: Chained method calls in operand positions
+    since: "7.02"
+    syntax: "lo_column = lo_alv->get_columns( )->get_column( 'VBELN' )."
+    older: Store each intermediate reference in a variable
+    checked_by: rule:method-chaining
+    test: |
+      DATA lo_alv TYPE REF TO cl_salv_table.
+      DATA lo_column TYPE REF TO cl_salv_column.
+      START-OF-SELECTION.
+        lo_column = lo_alv->get_columns( )->get_column( 'MANDT' ).
+    test_older: |
+      DATA lo_alv TYPE REF TO cl_salv_table.
+      DATA lo_columns TYPE REF TO cl_salv_columns_table.
+      DATA lo_column TYPE REF TO cl_salv_column.
+      START-OF-SELECTION.
+        lo_columns = lo_alv->get_columns( ).
+        lo_column = lo_columns->get_column( 'MANDT' ).
+    source: ABAP Keyword Documentation, Expression Positions in Release 7.0 EhP2 (method chaining)
+
+  - id: chained-call-statement
+    name: Chained method call as a standalone statement
+    since: "7.31"
+    syntax: "lo_alv->get_functions( )->set_all( abap_true )."
+    older: Store the intermediate reference in a variable, then call the method on it
+    checked_by: rule:chained-call-statement
+    test: |
+      DATA lo_alv TYPE REF TO cl_salv_table.
+      START-OF-SELECTION.
+        lo_alv->get_functions( )->set_all( abap_true ).
+    test_older: |
+      DATA lo_alv TYPE REF TO cl_salv_table.
+      DATA lo_functions TYPE REF TO cl_salv_functions_list.
+      START-OF-SELECTION.
+        lo_functions = lo_alv->get_functions( ).
+        lo_functions->set_all( abap_true ).
+    notes: On 7.02, chained calls work in operand positions only; 7.31 (also sold as 7.03) allows them as statements.
+    source: ABAP Keyword Documentation, ABAP Objects in Release 7.0 EhP3 and 7.3 EhP1 (chained method call)
+
+  - id: secondary-table-keys
+    name: Secondary table keys
+    since: "7.02"
+    syntax: "WITH NON-UNIQUE SORTED KEY by_name COMPONENTS name1"
+    older: A second, sorted copy of the table, or SORT plus READ TABLE ... BINARY SEARCH
+    checked_by: rule:secondary-table-keys
+    test: |
+      TYPES ty_clients TYPE SORTED TABLE OF t000 WITH UNIQUE KEY mandt
+        WITH NON-UNIQUE SORTED KEY by_text COMPONENTS mtext.
+      DATA lt_clients TYPE ty_clients.
+      START-OF-SELECTION.
+        READ TABLE lt_clients WITH KEY by_text COMPONENTS mtext = 'Test' TRANSPORTING NO FIELDS.
+    test_older: |
+      DATA lt_clients TYPE STANDARD TABLE OF t000 WITH DEFAULT KEY.
+      START-OF-SELECTION.
+        SORT lt_clients BY mtext.
+        READ TABLE lt_clients WITH KEY mtext = 'Test' BINARY SEARCH TRANSPORTING NO FIELDS.
+    source: ABAP Keyword Documentation, Changes in Release 7.02 (secondary table keys)
+
+  - id: dynamic-badi-access
+    name: Dynamic BAdI access, GET BADI ... TYPE (name) and CALL BADI badi->(method)
+    since: "7.02"
+    syntax: "GET BADI lo_badi TYPE (lv_badi_name)."
+    older: Static GET BADI with a reference typed with the BAdI
+    checked_by: rule:dynamic-badi-access
+    test: |
+      DATA lo_badi TYPE REF TO cl_badi_base.
+      DATA lv_name TYPE string.
+      START-OF-SELECTION.
+        lv_name = 'ZBADI_FA_CHECK'.
+        GET BADI lo_badi TYPE (lv_name).
+    test_older: |
+      DATA lo_badi TYPE REF TO zbadi_fa_check.
+      START-OF-SELECTION.
+        GET BADI lo_badi.
+    source: ABAP Keyword Documentation, Enhancements in Release 7.0 EhP2 (dynamic GET BADI and CALL BADI)
+
+  - id: test-class-properties
+    name: RISK LEVEL and DURATION additions for test classes
+    since: "7.02"
+    syntax: "CLASS ltc_report DEFINITION FOR TESTING RISK LEVEL HARMLESS DURATION SHORT."
+    older: 'Pseudo comments "#AU Risk_Level Harmless and "#AU Duration Short after FOR TESTING'
+    checked_by: rule:abap-unit-test-properties
+    test: |
+      CLASS ltc_test DEFINITION FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
+        PRIVATE SECTION.
+          METHODS run FOR TESTING.
+      ENDCLASS.
+      CLASS ltc_test IMPLEMENTATION.
+        METHOD run.
+        ENDMETHOD.
+      ENDCLASS.
+    test_older: |
+      CLASS ltc_test DEFINITION FOR TESTING. "#AU Risk_Level Harmless
+        "#AU Duration Short
+        PRIVATE SECTION.
+          METHODS run FOR TESTING.
+      ENDCLASS.
+      CLASS ltc_test IMPLEMENTATION.
+        METHOD run.
+        ENDMETHOD.
+      ENDCLASS.
+    source: ABAP Keyword Documentation, Tools in Release 7.0 EhP2 (ABAP Unit)
+
+  - id: abap-unit-assert
+    name: Assertion class CL_ABAP_UNIT_ASSERT
+    since: "7.02"
+    syntax: "cl_abap_unit_assert=>assert_equals( act = lv_total exp = 300 )."
+    older: "cl_aunit_assert=>assert_equals( act = lv_total exp = 300 )."
+    checked_by: rule:abap-unit-assert-class
+    test: |
+      DATA lv_total TYPE i.
+      START-OF-SELECTION.
+        cl_abap_unit_assert=>assert_equals( act = lv_total exp = 0 ).
+    test_older: |
+      DATA lv_total TYPE i.
+      START-OF-SELECTION.
+        cl_aunit_assert=>assert_equals( act = lv_total exp = 0 ).
+    source: ABAP Keyword Documentation, Tools in Release 7.0 EhP2 (CL_ABAP_UNIT_ASSERT replaces CL_AUNIT_ASSERT)
+
+  # ------------------------------------------------------------------ 7.40 SP02 (ECC 6.0 EHP7)
+  - id: inline-declarations
+    name: Inline declarations DATA( ) and FIELD-SYMBOL( )
+    since: "7.40 SP02"
+    syntax: "DATA(lv_count) = lines( lt_orders ).  LOOP AT lt_orders INTO DATA(ls_order)."
+    older: Declare every variable and field symbol with DATA or FIELD-SYMBOLS first
+    checked_by: abaplint
+    test: |
+      START-OF-SELECTION.
+        DATA(lv_count) = 1.
+        WRITE lv_count.
+    test_older: |
+      DATA lv_count TYPE i.
+      START-OF-SELECTION.
+        lv_count = 1.
+        WRITE lv_count.
+    source: ABAP Keyword Documentation, Changes in Release 7.40 SP02 (inline declarations)
+
+  - id: value-operator
+    name: VALUE constructor operator
+    since: "7.40 SP02"
+    syntax: "lt_numbers = VALUE #( ( 1 ) ( 2 ) )."
+    older: APPEND or INSERT each line
+    checked_by: abaplint
+    test: |
+      TYPES ty_numbers TYPE STANDARD TABLE OF i WITH DEFAULT KEY.
+      DATA lt_numbers TYPE ty_numbers.
+      START-OF-SELECTION.
+        lt_numbers = VALUE #( ( 1 ) ( 2 ) ( 3 ) ).
+    test_older: |
+      DATA lt_numbers TYPE STANDARD TABLE OF i WITH DEFAULT KEY.
+      START-OF-SELECTION.
+        APPEND 1 TO lt_numbers.
+        APPEND 2 TO lt_numbers.
+        APPEND 3 TO lt_numbers.
+    source: ABAP Keyword Documentation, Changes in Release 7.40 SP02 (constructor expressions)
+
+  - id: new-operator
+    name: NEW constructor operator
+    since: "7.40 SP02"
+    syntax: "lo_reader = NEW #( )."
+    older: CREATE OBJECT lo_reader. or CREATE DATA lr_data.
+    checked_by: abaplint
+    test: |
+      CLASS lcl_counter DEFINITION.
+        PUBLIC SECTION.
+          METHODS add.
+      ENDCLASS.
+      CLASS lcl_counter IMPLEMENTATION.
+        METHOD add.
+        ENDMETHOD.
+      ENDCLASS.
+      DATA lo_counter TYPE REF TO lcl_counter.
+      START-OF-SELECTION.
+        lo_counter = NEW #( ).
+        lo_counter->add( ).
+    test_older: |
+      CLASS lcl_counter DEFINITION.
+        PUBLIC SECTION.
+          METHODS add.
+      ENDCLASS.
+      CLASS lcl_counter IMPLEMENTATION.
+        METHOD add.
+        ENDMETHOD.
+      ENDCLASS.
+      DATA lo_counter TYPE REF TO lcl_counter.
+      START-OF-SELECTION.
+        CREATE OBJECT lo_counter.
+        lo_counter->add( ).
+    source: ABAP Keyword Documentation, Changes in Release 7.40 SP02 (constructor expressions)
+
+  - id: conv-cast-operators
+    name: CONV, CAST, REF, and EXACT constructor operators
+    since: "7.40 SP02"
+    syntax: "lo_type = CAST cl_abap_typedescr( lo_object )."
+    older: "Helper variables for conversions; ?= for down casts; GET REFERENCE OF"
+    checked_by: abaplint
+    test: |
+      DATA lo_object TYPE REF TO object.
+      DATA lo_type TYPE REF TO cl_abap_typedescr.
+      START-OF-SELECTION.
+        lo_type = CAST cl_abap_typedescr( lo_object ).
+    test_older: |
+      DATA lo_object TYPE REF TO object.
+      DATA lo_type TYPE REF TO cl_abap_typedescr.
+      START-OF-SELECTION.
+        lo_type ?= lo_object.
+    source: ABAP Keyword Documentation, Changes in Release 7.40 SP02 (constructor expressions)
+
+  - id: cond-switch-operators
+    name: COND and SWITCH conditional operators
+    since: "7.40 SP02"
+    syntax: "lv_text = COND #( WHEN lv_amount > 0 THEN `credit` ELSE `debit` )."
+    older: IF or CASE blocks that assign the variable
+    checked_by: abaplint
+    test: |
+      DATA lv_text TYPE string.
+      START-OF-SELECTION.
+        lv_text = COND #( WHEN sy-batch = abap_true THEN `background` ELSE `dialog` ).
+    test_older: |
+      DATA lv_text TYPE string.
+      START-OF-SELECTION.
+        IF sy-batch = abap_true.
+          lv_text = 'background'.
+        ELSE.
+          lv_text = 'dialog'.
+        ENDIF.
+    source: ABAP Keyword Documentation, Changes in Release 7.40 SP02 (conditional expressions)
+
+  - id: table-expressions
+    name: Table expressions itab[ ... ]
+    since: "7.40 SP02"
+    syntax: "ls_order = lt_orders[ vbeln = lv_vbeln ]."
+    older: READ TABLE ... INTO ... WITH KEY, then check sy-subrc
+    checked_by: abaplint
+    test: |
+      DATA lt_clients TYPE STANDARD TABLE OF t000 WITH DEFAULT KEY.
+      DATA ls_client TYPE t000.
+      START-OF-SELECTION.
+        ls_client = lt_clients[ mandt = '100' ].
+    test_older: |
+      DATA lt_clients TYPE STANDARD TABLE OF t000 WITH DEFAULT KEY.
+      DATA ls_client TYPE t000.
+      START-OF-SELECTION.
+        READ TABLE lt_clients INTO ls_client WITH KEY mandt = '100'.
+    notes: A table expression raises CX_SY_ITAB_LINE_NOT_FOUND when no line matches; READ TABLE sets sy-subrc instead.
+    source: ABAP Keyword Documentation, Changes in Release 7.40 SP02 (table expressions)
+
+  - id: line-exists
+    name: Predicate function line_exists( )
+    since: "7.40 SP02"
+    validator_from: "7.40 SP08"
+    syntax: "IF line_exists( lt_orders[ vbeln = lv_vbeln ] )."
+    older: READ TABLE ... TRANSPORTING NO FIELDS, then check sy-subrc
+    checked_by: abaplint
+    test: |
+      DATA lt_clients TYPE STANDARD TABLE OF t000 WITH DEFAULT KEY.
+      START-OF-SELECTION.
+        IF line_exists( lt_clients[ mandt = '100' ] ).
+          WRITE 'found'.
+        ENDIF.
+    test_older: |
+      DATA lt_clients TYPE STANDARD TABLE OF t000 WITH DEFAULT KEY.
+      START-OF-SELECTION.
+        READ TABLE lt_clients WITH KEY mandt = '100' TRANSPORTING NO FIELDS.
+        IF sy-subrc = 0.
+          WRITE 'found'.
+        ENDIF.
+    notes: The offline check accepts line_exists( ) in a condition only from 7.40 SP08; on SP02 to SP07 it rejects correct code.
+    source: ABAP Keyword Documentation, Changes in Release 7.40 SP02 (table expressions and line_exists)
+
+  - id: empty-key
+    name: Empty primary table key WITH EMPTY KEY
+    since: "7.40 SP02"
+    syntax: "TYPES ty_numbers TYPE STANDARD TABLE OF i WITH EMPTY KEY."
+    older: WITH DEFAULT KEY, or an explicit key
+    checked_by: abaplint
+    test: |
+      TYPES ty_numbers TYPE STANDARD TABLE OF i WITH EMPTY KEY.
+      DATA lt_numbers TYPE ty_numbers.
+    test_older: |
+      TYPES ty_numbers TYPE STANDARD TABLE OF i WITH DEFAULT KEY.
+      DATA lt_numbers TYPE ty_numbers.
+    source: ABAP Keyword Documentation, Changes in Release 7.40 SP02 (internal tables)
+
+  - id: wait-for-asynchronous-tasks
+    name: WAIT FOR ASYNCHRONOUS TASKS for asynchronous RFC callbacks
+    since: "7.40 SP02"
+    syntax: "WAIT FOR ASYNCHRONOUS TASKS UNTIL gv_done = abap_true UP TO 30 SECONDS."
+    older: "WAIT UNTIL gv_done = abap_true UP TO 30 SECONDS."
+    checked_by: rule:wait-for-asynchronous-tasks
+    test: |
+      DATA gv_done TYPE abap_bool.
+      START-OF-SELECTION.
+        WAIT FOR ASYNCHRONOUS TASKS UNTIL gv_done = abap_true UP TO 30 SECONDS.
+    test_older: |
+      DATA gv_done TYPE abap_bool.
+      START-OF-SELECTION.
+        WAIT UNTIL gv_done = abap_true UP TO 30 SECONDS.
+    source: ABAP Keyword Documentation, ABAP Channels in Release 7.40 SP02 (new variants of WAIT UNTIL)
+
+  # ------------------------------------------------------------------ 7.40 SP05
+  - id: sql-new-syntax
+    name: ABAP SQL with comma-separated lists and @ host variables
+    since: "7.40 SP05"
+    syntax: "SELECT vbeln, erdat FROM vbak INTO TABLE @lt_orders WHERE vkorg = @p_vkorg."
+    older: "SELECT vbeln erdat FROM vbak INTO TABLE lt_orders WHERE vkorg = p_vkorg."
+    checked_by: abaplint
+    test: |
+      DATA lt_clients TYPE STANDARD TABLE OF t000 WITH DEFAULT KEY.
+      PARAMETERS p_mandt TYPE t000-mandt.
+      START-OF-SELECTION.
+        SELECT mandt, mtext FROM t000 INTO CORRESPONDING FIELDS OF TABLE @lt_clients
+          WHERE mandt = @p_mandt.
+    test_older: |
+      DATA lt_clients TYPE STANDARD TABLE OF t000 WITH DEFAULT KEY.
+      PARAMETERS p_mandt TYPE t000-mandt.
+      START-OF-SELECTION.
+        SELECT mandt mtext FROM t000 INTO CORRESPONDING FIELDS OF TABLE lt_clients
+          WHERE mandt = p_mandt.
+    notes: Do not mix classic and new syntax in one statement.
+    source: ABAP Keyword Documentation, Changes in Release 7.40 SP05 (Open SQL)
+
+  - id: corresponding-operator
+    name: CORRESPONDING constructor operator
+    since: "7.40 SP05"
+    syntax: "ls_target = CORRESPONDING #( ls_source )."
+    older: MOVE-CORRESPONDING ls_source TO ls_target.
+    checked_by: abaplint
+    test: |
+      DATA ls_source TYPE t000.
+      DATA ls_target TYPE t001.
+      START-OF-SELECTION.
+        ls_target = CORRESPONDING #( ls_source ).
+    test_older: |
+      DATA ls_source TYPE t000.
+      DATA ls_target TYPE t001.
+      START-OF-SELECTION.
+        MOVE-CORRESPONDING ls_source TO ls_target.
+    source: ABAP Keyword Documentation, Changes in Release 7.40 SP05 (component operator)
+
+  - id: let-expressions
+    name: LET expressions in constructor expressions
+    since: "7.40 SP05"
+    syntax: "lv_text = COND #( LET n = lines( lt_items ) IN WHEN n > 0 THEN ... )."
+    older: A helper variable assigned before the expression
+    checked_by: rule:let-expressions
+    test: |
+      DATA lv_text TYPE string.
+      START-OF-SELECTION.
+        lv_text = CONV string( LET lv_name = sy-uname IN lv_name ).
+    test_older: |
+      DATA lv_text TYPE string.
+      DATA lv_name TYPE syuname.
+      START-OF-SELECTION.
+        lv_name = sy-uname.
+        lv_text = lv_name.
+    source: ABAP Keyword Documentation, Expressions in Release 7.40 SP05 (LET expressions)
+
+  - id: table-comprehensions
+    name: Table comprehensions, FOR ... IN in VALUE and NEW
+    since: "7.40 SP05"
+    syntax: "lt_doubled = VALUE #( FOR n IN lt_numbers ( n * 2 ) )."
+    older: LOOP AT ... with APPEND
+    checked_by: abaplint
+    test: |
+      TYPES ty_numbers TYPE STANDARD TABLE OF i WITH DEFAULT KEY.
+      DATA lt_numbers TYPE ty_numbers.
+      DATA lt_doubled TYPE ty_numbers.
+      START-OF-SELECTION.
+        lt_doubled = VALUE #( FOR lv_number IN lt_numbers ( lv_number * 2 ) ).
+    test_older: |
+      DATA lt_numbers TYPE STANDARD TABLE OF i WITH DEFAULT KEY.
+      DATA lt_doubled TYPE STANDARD TABLE OF i WITH DEFAULT KEY.
+      DATA lv_number TYPE i.
+      DATA lv_doubled TYPE i.
+      START-OF-SELECTION.
+        LOOP AT lt_numbers INTO lv_number.
+          lv_doubled = lv_number * 2.
+          APPEND lv_doubled TO lt_doubled.
+        ENDLOOP.
+    source: ABAP Keyword Documentation, Expressions and Internal Tables in Release 7.40 SP05 (table comprehensions)
+
+  # ------------------------------------------------------------------ 7.40 SP08
+  - id: sql-inline-declarations
+    name: Inline declarations in ABAP SQL, INTO TABLE @DATA( )
+    since: "7.40 SP08"
+    syntax: "SELECT vbeln, erdat FROM vbak WHERE vkorg = @p_vkorg INTO TABLE @DATA(lt_orders)."
+    older: Declare the target table first and use INTO TABLE @lt_orders
+    checked_by: rule:sql-inline-declarations
+    test: |
+      START-OF-SELECTION.
+        SELECT mandt, mtext FROM t000 INTO TABLE @DATA(lt_clients).
+    test_older: |
+      DATA lt_clients TYPE STANDARD TABLE OF t000 WITH DEFAULT KEY.
+      START-OF-SELECTION.
+        SELECT mandt, mtext FROM t000 INTO CORRESPONDING FIELDS OF TABLE @lt_clients.
+    notes: SAP introduced the new SQL syntax in SP05 and inline declarations after INTO in SP08.
+    source: ABAP Keyword Documentation, ABAP SQL in Release 7.40 SP08 (inline declarations for the target area of SELECT)
+
+  - id: sql-into-last
+    name: INTO as the last clause of SELECT
+    since: "7.40 SP08"
+    syntax: "SELECT vbeln, erdat FROM vbak WHERE vkorg = @p_vkorg INTO TABLE @lt_orders."
+    older: Put INTO directly after FROM, before WHERE
+    checked_by: rule:sql-into-last
+    test: |
+      DATA lt_clients TYPE STANDARD TABLE OF t000 WITH DEFAULT KEY.
+      PARAMETERS p_mandt TYPE t000-mandt.
+      START-OF-SELECTION.
+        SELECT mandt, mtext FROM t000 WHERE mandt = @p_mandt
+          INTO CORRESPONDING FIELDS OF TABLE @lt_clients.
+    test_older: |
+      DATA lt_clients TYPE STANDARD TABLE OF t000 WITH DEFAULT KEY.
+      PARAMETERS p_mandt TYPE t000-mandt.
+      START-OF-SELECTION.
+        SELECT mandt, mtext FROM t000 INTO CORRESPONDING FIELDS OF TABLE @lt_clients
+          WHERE mandt = @p_mandt.
+    source: ABAP Keyword Documentation, ABAP SQL in Release 7.40 SP08 (position of the INTO clause)
+
+  - id: sql-searched-case
+    name: Searched CASE in ABAP SQL, CASE WHEN condition
+    since: "7.40 SP08"
+    syntax: "CASE WHEN netwr > 1000 THEN 'L' ELSE 'S' END AS size_class"
+    older: Simple CASE (CASE column WHEN value ...) in SQL, or classify the rows in ABAP
+    checked_by: rule:sql-searched-case
+    test: |
+      TYPES: BEGIN OF ty_client,
+               mandt TYPE t000-mandt,
+               kind  TYPE c LENGTH 1,
+             END OF ty_client.
+      DATA lt_clients TYPE STANDARD TABLE OF ty_client WITH DEFAULT KEY.
+      START-OF-SELECTION.
+        SELECT mandt, CASE WHEN mandt = '000' THEN 'S' ELSE 'C' END AS kind
+          FROM t000 INTO TABLE @lt_clients.
+    test_older: |
+      TYPES: BEGIN OF ty_client,
+               mandt TYPE t000-mandt,
+               kind  TYPE c LENGTH 1,
+             END OF ty_client.
+      DATA lt_clients TYPE STANDARD TABLE OF ty_client WITH DEFAULT KEY.
+      START-OF-SELECTION.
+        SELECT mandt, CASE mandt WHEN '000' THEN 'S' ELSE 'C' END AS kind
+          FROM t000 INTO TABLE @lt_clients.
+    source: ABAP Keyword Documentation, ABAP SQL in Release 7.40 SP08 (SQL expressions)
+
+  - id: conditional-iterations
+    name: Conditional iterations FOR ... UNTIL and FOR ... WHILE
+    since: "7.40 SP08"
+    syntax: "lt_numbers = VALUE #( FOR i = 1 UNTIL i > 10 ( i ) )."
+    older: DO or WHILE loop with APPEND
+    checked_by: rule:conditional-iterations
+    test: |
+      TYPES ty_numbers TYPE STANDARD TABLE OF i WITH DEFAULT KEY.
+      DATA lt_numbers TYPE ty_numbers.
+      START-OF-SELECTION.
+        lt_numbers = VALUE #( FOR i = 1 UNTIL i > 3 ( i ) ).
+    test_older: |
+      DATA lt_numbers TYPE STANDARD TABLE OF i WITH DEFAULT KEY.
+      START-OF-SELECTION.
+        DO 3 TIMES.
+          APPEND sy-index TO lt_numbers.
+        ENDDO.
+    source: ABAP Keyword Documentation, Expressions in Release 7.40 SP08 (iteration expressions)
+
+  - id: reduce-operator
+    name: REDUCE operator
+    since: "7.40 SP08"
+    syntax: "lv_sum = REDUCE i( INIT s = 0 FOR n IN lt_numbers NEXT s = s + n )."
+    older: LOOP AT ... with a running total
+    checked_by: abaplint
+    test: |
+      TYPES ty_numbers TYPE STANDARD TABLE OF i WITH DEFAULT KEY.
+      DATA lt_numbers TYPE ty_numbers.
+      DATA lv_sum TYPE i.
+      START-OF-SELECTION.
+        lv_sum = REDUCE i( INIT s = 0 FOR lv_n IN lt_numbers NEXT s = s + lv_n ).
+    test_older: |
+      DATA lt_numbers TYPE STANDARD TABLE OF i WITH DEFAULT KEY.
+      DATA lv_number TYPE i.
+      DATA lv_sum TYPE i.
+      START-OF-SELECTION.
+        LOOP AT lt_numbers INTO lv_number.
+          lv_sum = lv_sum + lv_number.
+        ENDLOOP.
+    source: ABAP Keyword Documentation, Changes in Release 7.40 SP08 (reduction operator)
+
+  - id: filter-operator
+    name: FILTER operator
+    since: "7.40 SP08"
+    syntax: "lt_open = FILTER #( lt_orders WHERE status = 'A' )."
+    older: LOOP AT ... WHERE with INSERT or APPEND
+    checked_by: abaplint
+    test: |
+      TYPES ty_clients TYPE SORTED TABLE OF t000 WITH UNIQUE KEY mandt.
+      DATA lt_clients TYPE ty_clients.
+      DATA lt_selected TYPE ty_clients.
+      START-OF-SELECTION.
+        lt_selected = FILTER #( lt_clients WHERE mandt = '100' ).
+    test_older: |
+      DATA lt_clients TYPE SORTED TABLE OF t000 WITH UNIQUE KEY mandt.
+      DATA lt_selected TYPE SORTED TABLE OF t000 WITH UNIQUE KEY mandt.
+      DATA ls_client TYPE t000.
+      START-OF-SELECTION.
+        LOOP AT lt_clients INTO ls_client WHERE mandt = '100'.
+          INSERT ls_client INTO TABLE lt_selected.
+        ENDLOOP.
+    source: ABAP Keyword Documentation, Changes in Release 7.40 SP08 (filter operator)
+
+  - id: group-by-loop
+    name: LOOP AT ... GROUP BY
+    since: "7.40 SP08"
+    syntax: "LOOP AT lt_orders INTO DATA(ls_order) GROUP BY ls_order-kunnr."
+    older: SORT, then LOOP with AT NEW or a comparison with the previous line
+    checked_by: abaplint
+    test: |
+      DATA lt_clients TYPE STANDARD TABLE OF t000 WITH DEFAULT KEY.
+      FIELD-SYMBOLS <ls_client> TYPE t000.
+      START-OF-SELECTION.
+        LOOP AT lt_clients ASSIGNING <ls_client> GROUP BY <ls_client>-mtext.
+          WRITE / <ls_client>-mtext.
+        ENDLOOP.
+    test_older: |
+      DATA lt_clients TYPE STANDARD TABLE OF t000 WITH DEFAULT KEY.
+      DATA ls_client TYPE t000.
+      DATA lv_previous TYPE t000-mtext.
+      START-OF-SELECTION.
+        SORT lt_clients BY mtext.
+        LOOP AT lt_clients INTO ls_client.
+          IF sy-tabix = 1 OR ls_client-mtext <> lv_previous.
+            WRITE / ls_client-mtext.
+            lv_previous = ls_client-mtext.
+          ENDIF.
+        ENDLOOP.
+    source: ABAP Keyword Documentation, Changes in Release 7.40 SP08 (grouping internal tables)
+
+  - id: base-addition
+    name: BASE addition in VALUE, NEW, and CORRESPONDING
+    since: "7.40 SP08"
+    syntax: "lt_numbers = VALUE #( BASE lt_numbers ( 4 ) )."
+    older: APPEND or INSERT into the existing table
+    checked_by: rule:base-addition
+    test: |
+      TYPES ty_numbers TYPE STANDARD TABLE OF i WITH DEFAULT KEY.
+      DATA lt_numbers TYPE ty_numbers.
+      START-OF-SELECTION.
+        lt_numbers = VALUE #( BASE lt_numbers ( 4 ) ).
+    test_older: |
+      TYPES ty_numbers TYPE STANDARD TABLE OF i WITH DEFAULT KEY.
+      DATA lt_numbers TYPE ty_numbers.
+      START-OF-SELECTION.
+        APPEND 4 TO lt_numbers.
+    source: ABAP Keyword Documentation, Changes in Release 7.40 SP08 (BASE for constructor expressions)
+
+  - id: value-lines-of
+    name: LINES OF inside VALUE and NEW
+    since: "7.40 SP08"
+    syntax: "lt_all = VALUE #( ( LINES OF lt_open ) ( LINES OF lt_closed ) )."
+    older: APPEND LINES OF ... TO ...
+    checked_by: rule:value-lines-of
+    test: |
+      TYPES ty_numbers TYPE STANDARD TABLE OF i WITH DEFAULT KEY.
+      DATA lt_first TYPE ty_numbers.
+      DATA lt_all TYPE ty_numbers.
+      START-OF-SELECTION.
+        lt_all = VALUE #( ( LINES OF lt_first ) ( 4 ) ).
+    test_older: |
+      TYPES ty_numbers TYPE STANDARD TABLE OF i WITH DEFAULT KEY.
+      DATA lt_first TYPE ty_numbers.
+      DATA lt_all TYPE ty_numbers.
+      START-OF-SELECTION.
+        APPEND LINES OF lt_first TO lt_all.
+        APPEND 4 TO lt_all.
+    source: ABAP Keyword Documentation, Expressions in Release 7.40 SP08 (inserting table lines in constructed tables)
+
+  - id: optional-interface-methods
+    name: Optional interface methods, METHODS ... DEFAULT IGNORE or FAIL
+    since: "7.40 SP08"
+    syntax: "METHODS check_order DEFAULT IGNORE IMPORTING is_order TYPE vbak."
+    older: Every implementing class implements every interface method, at least as an empty method
+    checked_by: abaplint
+    test: |
+      INTERFACE lif_order_check.
+        METHODS check DEFAULT IGNORE.
+      ENDINTERFACE.
+      CLASS lcl_check DEFINITION.
+        PUBLIC SECTION.
+          INTERFACES lif_order_check.
+      ENDCLASS.
+      CLASS lcl_check IMPLEMENTATION.
+      ENDCLASS.
+    test_older: |
+      INTERFACE lif_order_check.
+        METHODS check.
+      ENDINTERFACE.
+      CLASS lcl_check DEFINITION.
+        PUBLIC SECTION.
+          INTERFACES lif_order_check.
+      ENDCLASS.
+      CLASS lcl_check IMPLEMENTATION.
+        METHOD lif_order_check~check.
+        ENDMETHOD.
+      ENDCLASS.
+    notes: The addition must follow the method name directly for the offline check to recognize it.
+    source: ABAP Keyword Documentation, ABAP Objects in Release 7.40 SP08 (optional interface methods)
+
+  - id: table-expression-default
+    name: OPTIONAL and DEFAULT for table expressions
+    since: "7.40 SP08"
+    syntax: "ls_order = VALUE #( lt_orders[ vbeln = lv_vbeln ] OPTIONAL )."
+    older: READ TABLE ... with a sy-subrc check, or TRY ... CATCH cx_sy_itab_line_not_found
+    checked_by: abaplint
+    test: |
+      DATA lt_clients TYPE STANDARD TABLE OF t000 WITH DEFAULT KEY.
+      DATA ls_client TYPE t000.
+      START-OF-SELECTION.
+        ls_client = VALUE #( lt_clients[ mandt = '100' ] OPTIONAL ).
+    test_older: |
+      DATA lt_clients TYPE STANDARD TABLE OF t000 WITH DEFAULT KEY.
+      DATA ls_client TYPE t000.
+      START-OF-SELECTION.
+        READ TABLE lt_clients INTO ls_client WITH KEY mandt = '100'.
+        IF sy-subrc <> 0.
+          CLEAR ls_client.
+        ENDIF.
+    source: ABAP Keyword Documentation, Changes in Release 7.40 SP08 (table expressions)
+
+  - id: xsdbool
+    name: Boolean function xsdbool( )
+    since: "7.40 SP08"
+    syntax: "lv_is_open = xsdbool( lv_status = 'A' )."
+    older: IF ... with abap_true and abap_false
+    checked_by: abaplint
+    test: |
+      DATA lv_flag TYPE abap_bool.
+      START-OF-SELECTION.
+        lv_flag = xsdbool( sy-batch = abap_true ).
+    test_older: |
+      DATA lv_flag TYPE abap_bool.
+      START-OF-SELECTION.
+        IF sy-batch = abap_true.
+          lv_flag = abap_true.
+        ELSE.
+          lv_flag = abap_false.
+        ENDIF.
+    source: ABAP Keyword Documentation, Changes in Release 7.40 SP08 (Boolean functions)
+
+  # ------------------------------------------------------------------ 7.50 (ECC 6.0 EHP8, S/4HANA 1511)
+  - id: test-seams
+    name: Test seams TEST-SEAM and TEST-INJECTION (class pools and function pools)
+    since: "7.50"
+    syntax: "TEST-SEAM read_orders. ... END-TEST-SEAM."
+    older: Put database access behind an interface and inject a test double
+    checked_by: abaplint
+    file: zcl_fa_feature.clas.abap
+    test: |
+      CLASS zcl_fa_feature DEFINITION PUBLIC FINAL CREATE PUBLIC.
+        PUBLIC SECTION.
+          METHODS count_clients RETURNING VALUE(rv_rows) TYPE i.
+      ENDCLASS.
+
+      CLASS zcl_fa_feature IMPLEMENTATION.
+        METHOD count_clients.
+          TEST-SEAM count.
+            SELECT COUNT(*) FROM t000 INTO rv_rows.
+          END-TEST-SEAM.
+        ENDMETHOD.
+      ENDCLASS.
+    test_older: |
+      CLASS zcl_fa_feature DEFINITION PUBLIC FINAL CREATE PUBLIC.
+        PUBLIC SECTION.
+          METHODS count_clients RETURNING VALUE(rv_rows) TYPE i.
+      ENDCLASS.
+
+      CLASS zcl_fa_feature IMPLEMENTATION.
+        METHOD count_clients.
+          SELECT COUNT(*) FROM t000 INTO rv_rows.
+        ENDMETHOD.
+      ENDCLASS.
+    notes: Injections must be in a test include, which only class pools and function pools have, so test seams do not work in reports.
+    source: ABAP Keyword Documentation, ABAP Unit in Release 7.50 (test seams); TEST-SEAM reference
+
+  - id: sql-host-expressions
+    name: Host expressions @( ... ) in ABAP SQL
+    since: "7.50"
+    syntax: "WHERE erdat >= @( sy-datum - 30 )"
+    older: Compute the value into a variable and use @lv_value
+    checked_by: rule:sql-host-expressions
+    test: |
+      DATA lt_clients TYPE STANDARD TABLE OF t000 WITH DEFAULT KEY.
+      START-OF-SELECTION.
+        SELECT mandt, mtext FROM t000 WHERE mandt = @( sy-mandt )
+          INTO CORRESPONDING FIELDS OF TABLE @lt_clients.
+    test_older: |
+      DATA lt_clients TYPE STANDARD TABLE OF t000 WITH DEFAULT KEY.
+      DATA lv_mandt TYPE t000-mandt.
+      START-OF-SELECTION.
+        lv_mandt = sy-mandt.
+        SELECT mandt, mtext FROM t000 WHERE mandt = @lv_mandt
+          INTO CORRESPONDING FIELDS OF TABLE @lt_clients.
+    source: ABAP Keyword Documentation, Changes in Release 7.50 (host expressions)
+
+  - id: sql-union
+    name: UNION in ABAP SQL
+    since: "7.50"
+    syntax: "SELECT ... UNION SELECT ... INTO TABLE @lt_result."
+    older: Two SELECT statements, the second with APPENDING
+    checked_by: abaplint
+    test: |
+      DATA lt_clients TYPE STANDARD TABLE OF t000 WITH DEFAULT KEY.
+      START-OF-SELECTION.
+        SELECT mandt, mtext FROM t000 WHERE mandt = '000'
+          UNION SELECT mandt, mtext FROM t000 WHERE mandt = '001'
+          INTO CORRESPONDING FIELDS OF TABLE @lt_clients.
+    test_older: |
+      DATA lt_clients TYPE STANDARD TABLE OF t000 WITH DEFAULT KEY.
+      START-OF-SELECTION.
+        SELECT mandt, mtext FROM t000 WHERE mandt = '000'
+          INTO CORRESPONDING FIELDS OF TABLE @lt_clients.
+        SELECT mandt, mtext FROM t000 WHERE mandt = '001'
+          APPENDING CORRESPONDING FIELDS OF TABLE @lt_clients.
+    source: ABAP Keyword Documentation, Changes in Release 7.50 (Open SQL)
+
+  - id: is-instance-of
+    name: Predicate IS INSTANCE OF and CASE TYPE OF
+    since: "7.50"
+    syntax: "IF lo_object IS INSTANCE OF zcl_fa_order."
+    older: Down cast with ?= inside TRY ... CATCH cx_sy_move_cast_error
+    checked_by: abaplint
+    test: |
+      DATA lo_object TYPE REF TO object.
+      START-OF-SELECTION.
+        IF lo_object IS INSTANCE OF cl_abap_typedescr.
+          WRITE 'type description'.
+        ENDIF.
+    test_older: |
+      DATA lo_object TYPE REF TO object.
+      DATA lo_type TYPE REF TO cl_abap_typedescr.
+      START-OF-SELECTION.
+        TRY.
+            lo_type ?= lo_object.
+            WRITE 'type description'.
+          CATCH cx_sy_move_cast_error.
+            CLEAR lo_type.
+        ENDTRY.
+    source: ABAP Keyword Documentation, Changes in Release 7.50 (predicate expressions)
+
+  # ------------------------------------------------------------------ 7.51 to 7.58 (S/4HANA 1610 to 2023)
+  - id: sql-common-table-expressions
+    name: Common table expressions WITH in ABAP SQL
+    since: "7.51"
+    syntax: "WITH +open AS ( SELECT ... ) SELECT ... FROM +open INTO TABLE @lt_result."
+    older: Subqueries, joins, or two statements
+    checked_by: abaplint
+    test: |
+      DATA lt_clients TYPE STANDARD TABLE OF t000 WITH DEFAULT KEY.
+      START-OF-SELECTION.
+        WITH +clients AS ( SELECT mandt, mtext FROM t000 WHERE mandt <> '000' )
+          SELECT mandt, mtext FROM +clients INTO CORRESPONDING FIELDS OF TABLE @lt_clients.
+    test_older: |
+      DATA lt_clients TYPE STANDARD TABLE OF t000 WITH DEFAULT KEY.
+      START-OF-SELECTION.
+        SELECT mandt, mtext FROM t000 WHERE mandt <> '000'
+          INTO CORRESPONDING FIELDS OF TABLE @lt_clients.
+    source: ABAP Keyword Documentation, Changes in Release 7.51 (common table expressions)
+
+  - id: enumerated-types
+    name: Enumerated types BEGIN OF ENUM
+    since: "7.51"
+    syntax: "TYPES: BEGIN OF ENUM ty_status, open, closed, END OF ENUM ty_status."
+    older: A structure of constants
+    checked_by: abaplint
+    test: |
+      TYPES: BEGIN OF ENUM ty_status,
+               open,
+               closed,
+             END OF ENUM ty_status.
+      DATA lv_status TYPE ty_status.
+      START-OF-SELECTION.
+        lv_status = closed.
+    test_older: |
+      CONSTANTS: BEGIN OF gc_status,
+                   open   TYPE c LENGTH 1 VALUE 'O',
+                   closed TYPE c LENGTH 1 VALUE 'C',
+                 END OF gc_status.
+      DATA lv_status TYPE c LENGTH 1.
+      START-OF-SELECTION.
+        lv_status = gc_status-closed.
+    source: ABAP Keyword Documentation, Changes in Release 7.51 (enumerated types)
+
+  - id: sql-offset
+    name: OFFSET in ABAP SQL
+    since: "7.51"
+    syntax: "ORDER BY vbeln INTO TABLE @lt_page UP TO 50 ROWS OFFSET 100"
+    older: Read UP TO offset plus page size rows and delete the leading rows, or use a cursor
+    checked_by: abaplint
+    test: |
+      DATA lt_clients TYPE STANDARD TABLE OF t000 WITH DEFAULT KEY.
+      START-OF-SELECTION.
+        SELECT mandt, mtext FROM t000 ORDER BY mandt
+          INTO CORRESPONDING FIELDS OF TABLE @lt_clients UP TO 10 ROWS OFFSET 20.
+    test_older: |
+      DATA lt_clients TYPE STANDARD TABLE OF t000 WITH DEFAULT KEY.
+      START-OF-SELECTION.
+        SELECT mandt, mtext FROM t000 ORDER BY mandt
+          INTO CORRESPONDING FIELDS OF TABLE @lt_clients UP TO 30 ROWS.
+        DELETE lt_clients TO 20.
+    source: ABAP Keyword Documentation, Changes in Release 7.51 (Open SQL)
+
+  - id: sql-internal-table-source
+    name: Internal table as data source, SELECT ... FROM @itab
+    since: "7.52"
+    syntax: "SELECT kunnr, SUM( netwr ) AS netwr FROM @lt_orders AS o GROUP BY kunnr INTO TABLE @lt_totals."
+    older: Process the internal table with LOOP, SORT, or COLLECT
+    checked_by: abaplint
+    test: |
+      TYPES ty_clients TYPE STANDARD TABLE OF t000 WITH DEFAULT KEY.
+      DATA lt_clients TYPE ty_clients.
+      START-OF-SELECTION.
+        SELECT mandt, mtext FROM @lt_clients AS clients INTO TABLE @DATA(lt_copy).
+    test_older: |
+      TYPES ty_clients TYPE STANDARD TABLE OF t000 WITH DEFAULT KEY.
+      DATA lt_clients TYPE ty_clients.
+      DATA lt_copy TYPE ty_clients.
+      START-OF-SELECTION.
+        lt_copy = lt_clients.
+    source: ABAP Keyword Documentation, Changes in Release 7.52 (Open SQL)
+
+  - id: calculation-assignments
+    name: Calculation assignments +=, -=, *=, /=
+    since: "7.54"
+    syntax: "lv_total += ls_item-netwr."
+    older: lv_total = lv_total + ls_item-netwr.
+    checked_by: abaplint
+    test: |
+      DATA lv_count TYPE i.
+      START-OF-SELECTION.
+        lv_count += 1.
+    test_older: |
+      DATA lv_count TYPE i.
+      START-OF-SELECTION.
+        lv_count = lv_count + 1.
+    source: ABAP Keyword Documentation, Changes in Release 7.54 (calculation assignments)
+
+  - id: final-declarations
+    name: Immutable inline declarations FINAL( )
+    since: "7.57"
+    syntax: "FINAL(lv_limit) = 100."
+    older: DATA( ) inline declaration, or CONSTANTS
+    checked_by: abaplint
+    test: |
+      START-OF-SELECTION.
+        FINAL(lv_limit) = 100.
+        WRITE lv_limit.
+    test_older: |
+      START-OF-SELECTION.
+        DATA(lv_limit) = 100.
+        WRITE lv_limit.
+    source: ABAP Keyword Documentation, Changes in Release 7.57 (FINAL declaration operator)
+
+  - id: loop-step
+    name: STEP addition for LOOP AT
+    since: "7.57"
+    syntax: "LOOP AT lt_items INTO ls_item STEP -1."
+    older: WHILE loop with READ TABLE ... INDEX
+    checked_by: abaplint
+    test: |
+      DATA lt_numbers TYPE STANDARD TABLE OF i WITH DEFAULT KEY.
+      DATA lv_number TYPE i.
+      START-OF-SELECTION.
+        LOOP AT lt_numbers INTO lv_number STEP -1.
+          WRITE lv_number.
+        ENDLOOP.
+    test_older: |
+      DATA lt_numbers TYPE STANDARD TABLE OF i WITH DEFAULT KEY.
+      DATA lv_number TYPE i.
+      DATA lv_index TYPE i.
+      START-OF-SELECTION.
+        lv_index = lines( lt_numbers ).
+        WHILE lv_index > 0.
+          READ TABLE lt_numbers INDEX lv_index INTO lv_number.
+          WRITE lv_number.
+          lv_index = lv_index - 1.
+        ENDWHILE.
+    source: ABAP Keyword Documentation, Changes in Release 7.57 (internal tables)
+
+  # ------------------------------------------------------------------ ABAP CDS
+  - id: cds-ddic-based-view
+    name: DDIC-based CDS view (DEFINE VIEW with @AbapCatalog.sqlViewName)
+    since: "7.40 SP05"
+    syntax: "@AbapCatalog.sqlViewName: 'ZFAVORDER' define view ZFA_I_Order as select from vbak { ... }"
+    older: Dictionary database view (SE11) or a join in ABAP SQL
+    checked_by: rule:cds-ddic-based-view
+    file: zfa_i_feature.ddls.asddls
+    test: |
+      @AbapCatalog.sqlViewName: 'ZFAIFEATURE'
+      define view ZFA_I_FEATURE as select from t000 {
+        key mandt,
+            mtext
+      }
+    source: ABAP Keyword Documentation, Changes in Release 7.40 SP05 (ABAP CDS)
+
+  - id: cds-view-entity
+    name: CDS view entity (DEFINE VIEW ENTITY)
+    since: "7.55"
+    syntax: "define view entity ZFA_I_Order as select from vbak { ... }"
+    older: DDIC-based CDS view with @AbapCatalog.sqlViewName
+    checked_by: rule:cds-view-entity
+    file: zfa_i_feature.ddls.asddls
+    test: |
+      define view entity ZFA_I_FEATURE as select from t000 {
+        key mandt,
+            mtext
+      }
+    test_older: |
+      @AbapCatalog.sqlViewName: 'ZFAIFEATURE'
+      define view ZFA_I_FEATURE as select from t000 {
+        key mandt,
+            mtext
+      }
+    source: ABAP Keyword Documentation, Changes in Release 7.55 (CDS view entities)
