@@ -31,7 +31,7 @@
     "export:upstream": "node scripts/export-upstream.mjs"
   },
   "devDependencies": {
-    "@abaplint/core": "2.120.70",
+    "@abaplint/core": "2.120.77",
     "@apexdevtools/apex-parser": "5.2.0",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
