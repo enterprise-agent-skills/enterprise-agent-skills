@@ -122,12 +122,16 @@ of this repository attaches these files:
 |------|----------|
 | `<skill>.zip`, for example `sap-abap-standard.zip` | One skill, with `SKILL.md` and its supporting files |
 | `plugin-<plugin>.zip`, for example `plugin-sap-abap.zip` | One plugin, with its skills, any agents, and the manifests for every platform |
+| `<skill>-copilot-cowork.zip`, for example `sap-abap-standard-copilot-cowork.zip` | The same skill with `SKILL.md` at the root of the ZIP, for Microsoft 365 Copilot Cowork |
+| `plugin-<plugin>-copilot-cowork.zip`, for example `plugin-sap-abap-copilot-cowork.zip` | The same plugin with its manifests at the root of the ZIP, for Microsoft 365 Copilot Cowork |
 | `all-skills.zip` | Every skill |
 | `SHA256SUMS.txt` | The SHA-256 checksum of each ZIP file |
 | `provenance.sigstore.json` | Signed build provenance for the ZIP files |
 
 A skill or plugin ZIP holds one folder named after the skill or plugin, with `LICENSE.txt`
-inside; `all-skills.zip` holds one such folder per skill.
+inside; `all-skills.zip` holds one such folder per skill. The `-copilot-cowork.zip` files hold
+the same files without that folder, because Microsoft 365 Copilot Cowork looks for `SKILL.md`
+at the root of the ZIP, while Claude's skill upload looks for it inside the folder.
 
 Prefer a marketplace install from [Install](#install) where your agent supports one: it can be
 updated from the agent, while a ZIP stays at the release you downloaded. Skill ZIPs are for
@@ -136,7 +140,8 @@ that load a whole plugin from a folder or an uploaded archive, such as claude.ai
 
 | Product | What to do with a skill ZIP |
 |---------|-----------------------------|
-| claude.ai and the Claude desktop app, including Cowork | In Customize > Skills, select +, then Create skill, then Upload a skill, and choose the ZIP. Then turn the skill on. Skills need a Pro, Max, Team, or Enterprise plan and Code execution and file creation turned on in Settings > Capabilities; on Team and Enterprise plans, an Owner turns it on in Organization settings > Capabilities. A plugin ZIP goes in Customize > Plugins > Add > Upload plugin. |
+| Microsoft 365 Copilot Cowork | Use the `-copilot-cowork.zip` files. In Cowork, open Customize > Skills, select the arrow next to Add, then Upload skill, and choose for example `sap-abap-standard-copilot-cowork.zip`. Cowork saves the skill to your OneDrive and uses it from your next conversation. For a whole plugin, open Customize > Plugins > Upload plugin and choose for example `plugin-sap-abap-copilot-cowork.zip`; Cowork converts Claude plugin packages and asks who in your organization may use the plugin. Custom skills do not work in Cowork on mobile. |
+| claude.ai and the Claude desktop app, including Claude Cowork | In Customize > Skills, select +, then Create skill, then Upload a skill, and choose the ZIP. Then turn the skill on. Skills need a Pro, Max, Team, or Enterprise plan and Code execution and file creation turned on in Settings > Capabilities; on Team and Enterprise plans, an Owner turns it on in Organization settings > Capabilities. A plugin ZIP goes in Customize > Plugins > Add > Upload plugin. |
 | Claude Code | Unzip into `~/.claude/skills/` for all projects or `.claude/skills/` for one project. To load a plugin ZIP for one session, start Claude Code with `claude --plugin-dir ./plugin-sap-abap.zip`. |
 | GitHub Copilot CLI | Unzip into `~/.copilot/skills/` or `~/.agents/skills/` for all projects, or into `.github/skills/`, `.agents/skills/`, or `.claude/skills/` in a project. |
 | GitHub Copilot in VS Code | Unzip into `~/.copilot/skills/`, `~/.agents/skills/`, or `~/.claude/skills/` for all projects, or into `.github/skills/`, `.agents/skills/`, or `.claude/skills/` in a project. |
@@ -146,7 +151,9 @@ that load a whole plugin from a folder or an uploaded archive, such as claude.ai
 | Other agents that read Agent Skills | Use the `npx skills add` command under [Install](#install). |
 
 To add every skill at once, unzip `all-skills.zip` into one of these folders; on claude.ai,
-upload the single skill ZIPs instead. The `abap-reviewer` agent is only in
+upload the single skill ZIPs instead. In Microsoft 365 Copilot Cowork, upload each
+`-copilot-cowork.zip` file, or copy skill folders from `all-skills.zip` into
+`/Documents/Cowork/skills/` in your OneDrive (up to 50 custom skills). The `abap-reviewer` agent is only in
 `plugin-sap-abap.zip`. Agents load in Claude Code and Cowork; claude.ai chat ignores them.
 
 To check a download, run one of these commands in the folder that holds the ZIP files and
@@ -206,6 +213,7 @@ without a file marker are not parsed. `line_exists( )` passes the offline check 
 |----------|---------------------------------|--------|
 | Claude Code | `.claude-plugin/plugin.json` per plugin, `.claude-plugin/marketplace.json` | Installed from the marketplace and used on 2026-10-21 (`sap-abap` 0.2.0) |
 | Claude Cowork and claude.ai | Same plugin folders through the marketplace | Generated; not yet verified end to end |
+| Microsoft 365 Copilot Cowork | Skill and plugin ZIPs with the files at the root (`-copilot-cowork.zip` release assets) | Packaged; not yet verified end to end |
 | GitHub Copilot CLI | Agent Plugins `plugin.json`, `.github/plugin/marketplace.json` | Installed from the marketplace and used on 2026-10-21 (`sap-abap` 0.2.0); see the notes in [platform-compatibility.md](docs/platform-compatibility.md#recording-a-verification) |
 | GitHub Copilot in VS Code, Cursor, Gemini CLI, others | `npx skills add`, plus `.cursor-plugin` and `gemini-extension.json` manifests | Generated; not yet verified end to end |
 | OpenAI Codex | Agent Plugins `plugin.json`, `.agents/plugins/marketplace.json` | Generated; not yet verified end to end |

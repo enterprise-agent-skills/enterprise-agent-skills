@@ -57,8 +57,8 @@ To update a clone made before the rename, run
    `validate` also runs `npm run eval:vally`, which the release workflow does not run.
 3. Tag that commit and push the tag, for example for the first release:
    `git tag v0.1.0 && git push origin v0.1.0`.
-4. Check that the release lists one ZIP per skill and per plugin, `all-skills.zip`,
-   `SHA256SUMS.txt`, and `provenance.sigstore.json`.
+4. Check that the release lists one ZIP per skill and per plugin, the same again with the
+   `-copilot-cowork` suffix, `all-skills.zip`, `SHA256SUMS.txt`, and `provenance.sigstore.json`.
 5. Run `claude plugin validate` on each plugin folder and record the result in
    [platform-compatibility.md](platform-compatibility.md).
 6. Install each plugin on at least one platform and record it in the verification table of
@@ -88,6 +88,8 @@ Each release has these assets. `scripts/package.mjs` builds the ZIP files and
 | `<skill>.zip` | One folder named after the skill, with `SKILL.md` and the rest of the skill folder, plus `LICENSE.txt` |
 | `plugin-<plugin>.zip` | One folder named after the plugin, with its skills, any agents, and every platform manifest, plus `LICENSE.txt` |
 | `all-skills.zip` | Every skill folder at the top level, each with `LICENSE.txt` |
+| `<skill>-copilot-cowork.zip` | The files of `<skill>.zip` without the top-level folder, so `SKILL.md` is at the root, as Microsoft 365 Copilot Cowork's Upload skill expects |
+| `plugin-<plugin>-copilot-cowork.zip` | The files of `plugin-<plugin>.zip` without the top-level folder, so `.claude-plugin/plugin.json` is at the root, for Copilot Cowork's Upload plugin |
 | `SHA256SUMS.txt` | SHA-256 checksums of the ZIP files |
 | `provenance.sigstore.json` | The attestation bundle with the signed build provenance of the ZIP files |
 
