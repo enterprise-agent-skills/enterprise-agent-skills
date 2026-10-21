@@ -9,6 +9,10 @@
  *                             structure Claude's skill upload and every skills folder expect
  * dist/plugins/plugin-<plugin>.zip  one folder named after the plugin, with every manifest
  * dist/all-skills.zip         every skill folder at the top level, to unzip into a skills folder
+ * dist/copilot-cowork/<skill>-copilot-cowork.zip and plugin-<plugin>-copilot-cowork.zip
+ *                             the same files without the top-level folder: Microsoft 365
+ *                             Copilot Cowork's skill upload wants SKILL.md at the archive root,
+ *                             which Claude's skill upload does not recognize
  * dist/SHA256SUMS.txt         checksums of all ZIP files
  * dist/RELEASE_NOTES.md       asset list and install pointers for the GitHub release
  *
@@ -35,12 +39,15 @@ import { createZip } from "./lib/zip.mjs";
 /** Written into every output folder so a later run knows it may delete that folder. */
 export const OUTPUT_MARKER = ".package-output";
 
-/** Files under `dir`, as { path, data } with `prefix/` plus the path relative to `dir`. */
+/**
+ * Files under `dir`, as { path, data } with `prefix/` plus the path relative to `dir`. An empty
+ * prefix puts the files at the archive root.
+ */
 function folderEntries(dir, prefix) {
   return walkFiles(dir)
     .map((f) => relative(dir, f).split(sep).join("/"))
     .filter((p) => !isLocalJunk(p))
-    .map((p) => ({ path: `${prefix}/${p}`, data: readFileSync(join(dir, p)) }));
+    .map((p) => ({ path: prefix ? `${prefix}/${p}` : p, data: readFileSync(join(dir, p)) }));
 }
 
 /**
@@ -99,6 +106,7 @@ export function buildPackages({ outDir = join(REPO_ROOT, "dist"), version = null
   rmSync(outDir, { recursive: true, force: true });
   mkdirSync(join(outDir, "skills"), { recursive: true });
   mkdirSync(join(outDir, "plugins"), { recursive: true });
+  mkdirSync(join(outDir, "copilot-cowork"), { recursive: true });
   // Written before any archive, so a run that fails halfway still leaves a folder the next run
   // may clean. The release workflow uploads only the files it names, never this marker.
   writeFileSync(join(outDir, OUTPUT_MARKER), "Created by npm run package. This folder is deleted and rebuilt on every run.\n");
@@ -115,7 +123,7 @@ export function buildPackages({ outDir = join(REPO_ROOT, "dist"), version = null
   const license = readFileSync(join(REPO_ROOT, "LICENSE"));
   const withLicense = (dir, folder) => {
     const entries = folderEntries(dir, folder);
-    const target = `${folder}/LICENSE.txt`;
+    const target = folder ? `${folder}/LICENSE.txt` : "LICENSE.txt";
     if (entries.some((e) => e.path.toLowerCase() === target.toLowerCase())) {
       throw new Error(`${target} already exists in the source folder; packaging would replace it. Decide which license applies first.`);
     }
@@ -124,6 +132,9 @@ export function buildPackages({ outDir = join(REPO_ROOT, "dist"), version = null
   for (const s of skills) write(`skills/${s.data.name}.zip`, createZip(withLicense(s.dir, s.data.name)));
   for (const p of plugins) write(`plugins/plugin-${p.source.name}.zip`, createZip(withLicense(p.dir, p.source.name)));
   write("all-skills.zip", createZip(skills.flatMap((s) => withLicense(s.dir, s.data.name))));
+  // Microsoft 365 Copilot Cowork: SKILL.md, or .claude-plugin/plugin.json, at the archive root.
+  for (const s of skills) write(`copilot-cowork/${s.data.name}-copilot-cowork.zip`, createZip(withLicense(s.dir, "")));
+  for (const p of plugins) write(`copilot-cowork/plugin-${p.source.name}-copilot-cowork.zip`, createZip(withLicense(p.dir, "")));
 
   const sums = written.map((w) => `${w.sha256}  ${w.relPath.split("/").pop()}`).join("\n") + "\n";
   writeFileSync(join(outDir, "SHA256SUMS.txt"), sums);
@@ -131,11 +142,11 @@ export function buildPackages({ outDir = join(REPO_ROOT, "dist"), version = null
   const vendors = [...new Set(plugins.map((p) => vendorNames[p.source.vendor] ?? p.source.vendor))];
   const kb = (n) => `${Math.max(1, Math.round(n / 1024))} KB`;
   const notes = [
-    `Downloadable packages${version ? ` for ${version}` : ""}. Each skill ZIP holds one folder named after the skill, with SKILL.md inside.`,
+    `Downloadable packages${version ? ` for ${version}` : ""}. Each skill ZIP holds one folder named after the skill, with SKILL.md inside. Files ending in -copilot-cowork.zip hold the same skill or plugin with its files at the root of the ZIP, the layout Microsoft 365 Copilot Cowork's upload expects.`,
     "",
     `Independent community project. Not affiliated with, sponsored by, or endorsed by ${[...vendors, "any other vendor named here"].join(", ").replace(/, ([^,]+)$/, ", or $1")}. Product names are trademarks of their owners. MIT License; each archive includes LICENSE.txt.`,
     "",
-    `How to use them in Claude, Claude Code, GitHub Copilot, OpenAI Codex, Cursor, and Gemini CLI: ${urls.repo}#download-skills-as-zip-files`,
+    `How to use them in Claude, Claude Code, Microsoft 365 Copilot Cowork, GitHub Copilot, OpenAI Codex, Cursor, and Gemini CLI: ${urls.repo}#download-skills-as-zip-files`,
     "",
     "| File | Contents | Size |",
     "| --- | --- | --- |",
@@ -147,6 +158,10 @@ export function buildPackages({ outDir = join(REPO_ROOT, "dist"), version = null
         what = `Skill \`${s.data.name}\` (plugin \`${s.pluginName}\`)`;
       } else if (w.relPath.startsWith("plugins/")) {
         what = `Plugin \`${name.replace(/^plugin-/, "").replace(/\.zip$/, "")}\` with all platform manifests`;
+      } else if (w.relPath.startsWith("copilot-cowork/plugin-")) {
+        what = `Plugin \`${name.replace(/^plugin-/, "").replace(/-copilot-cowork\.zip$/, "")}\` for Microsoft 365 Copilot Cowork (Upload plugin)`;
+      } else if (w.relPath.startsWith("copilot-cowork/")) {
+        what = `Skill \`${name.replace(/-copilot-cowork\.zip$/, "")}\` for Microsoft 365 Copilot Cowork (Upload skill)`;
       }
       return `| \`${name}\` | ${what} | ${kb(w.size)} |`;
     }),

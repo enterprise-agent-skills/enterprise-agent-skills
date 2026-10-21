@@ -119,7 +119,9 @@ Workflows use read-only tokens unless a job needs more, and actions are pinned t
 `scripts/package.mjs` turns the plugin folders into downloadable ZIP files: one per skill
 (`<skill>.zip`), one per plugin (`plugin-<plugin>.zip`), and `all-skills.zip`. A skill or plugin
 ZIP holds one top-level folder named after it; `all-skills.zip` holds every skill folder at the
-top level. Every skill or plugin folder in an archive gets `LICENSE.txt`, a copy of the
+top level. The `-copilot-cowork.zip` variants hold the same files at the archive root, because
+Microsoft 365 Copilot Cowork's upload looks for `SKILL.md` there, while Claude's skill upload
+requires the folder. Every skill or plugin folder in an archive gets `LICENSE.txt`, a copy of the
 repository license: the MIT License asks for its notice in every copy, and installs copy only
 that folder. The script also writes `SHA256SUMS.txt` and `RELEASE_NOTES.md`. The ZIP writer
 (`scripts/lib/zip.mjs`) sorts entries and fixes timestamps and permissions, so the same files

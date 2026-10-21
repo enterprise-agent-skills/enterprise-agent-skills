@@ -54,6 +54,24 @@ test("package: one ZIP per skill and plugin, each skill in one folder named afte
       assert.ok(entries.some((e) => e.path === `${p.source.name}/plugin.json`), `${p.source.name}.zip lacks its Agent Plugins manifest`);
       assert.deepEqual(entries.find((e) => e.path === `${p.source.name}/LICENSE.txt`)?.data, license, `plugin-${p.source.name}.zip must include LICENSE.txt`);
     }
+    // Microsoft 365 Copilot Cowork wants SKILL.md, or the Claude plugin manifest, at the archive root.
+    for (const s of skills) {
+      const name = `${s.data.name}-copilot-cowork.zip`;
+      const entries = readZip(readFileSync(join(out, "copilot-cowork", name)));
+      for (const rel of s.files) {
+        const entry = entries.find((e) => e.path === rel);
+        assert.ok(entry, `${name} is missing ${rel} at the root`);
+        assert.deepEqual(entry.data, readFileSync(join(s.dir, rel)), `${name}: ${rel} differs from the source`);
+      }
+      assert.ok(entries.some((e) => e.path === "SKILL.md"), `${name} must have SKILL.md at the root`);
+      assert.deepEqual(entries.find((e) => e.path === "LICENSE.txt")?.data, license, `${name} must include LICENSE.txt at the root`);
+    }
+    for (const p of model.plugins.filter((x) => x.source)) {
+      const name = `plugin-${p.source.name}-copilot-cowork.zip`;
+      const entries = readZip(readFileSync(join(out, "copilot-cowork", name)));
+      assert.ok(entries.some((e) => e.path === ".claude-plugin/plugin.json"), `${name} must have .claude-plugin/plugin.json at the root`);
+      assert.ok(entries.some((e) => e.path === "LICENSE.txt"), `${name} must include LICENSE.txt at the root`);
+    }
     const sums = readFileSync(join(out, "SHA256SUMS.txt"), "utf8").trim().split("\n");
     assert.equal(sums.length, written.length);
     for (const w of written) {
@@ -62,6 +80,7 @@ test("package: one ZIP per skill and plugin, each skill in one folder named afte
     }
     const notes = readFileSync(join(out, "RELEASE_NOTES.md"), "utf8");
     assert.match(notes, /#download-skills-as-zip-files/, "release notes link to the README download section");
+    assert.match(notes, /sap-abap-standard-copilot-cowork\.zip/, "release notes list the Copilot Cowork packages");
     assert.match(readFileSync(join(REPO_ROOT, "README.md"), "utf8"), /^## Download skills as ZIP files$/m, "README.md must have the section the release notes link to");
     assert.match(notes, /sha256sum -c --ignore-missing SHA256SUMS\.txt/, "a single download must verify on Linux");
     assert.match(notes, /shasum -a 256 -c --ignore-missing SHA256SUMS\.txt/, "a single download must verify on macOS");

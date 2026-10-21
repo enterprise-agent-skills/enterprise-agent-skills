@@ -70,10 +70,10 @@ jobs:
 
       - name: Test the archives
         run: |
-          for f in dist/skills/*.zip dist/plugins/*.zip dist/all-skills.zip; do
+          for f in dist/skills/*.zip dist/plugins/*.zip dist/copilot-cowork/*.zip dist/all-skills.zip; do
             unzip -tq "$f"
           done
-          (cd dist && find . -name '*.zip' -exec sha256sum {} + | sed 's# \./[a-z]*/# #; s# \./# #' | sort > /tmp/computed.txt)
+          (cd dist && find . -name '*.zip' -exec sha256sum {} + | sed 's# \./[a-z-]*/# #; s# \./# #' | sort > /tmp/computed.txt)
           sort dist/SHA256SUMS.txt | diff - /tmp/computed.txt
 
       - name: Upload the packages
@@ -107,6 +107,7 @@ jobs:
           subject-path: |
             dist/skills/*.zip
             dist/plugins/*.zip
+            dist/copilot-cowork/*.zip
             dist/all-skills.zip
 
       - name: Create the release
@@ -117,4 +118,4 @@ jobs:
         run: |
           cp "$BUNDLE" dist/provenance.sigstore.json
           gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" --notes-file dist/RELEASE_NOTES.md \
-            dist/skills/*.zip dist/plugins/*.zip dist/all-skills.zip dist/SHA256SUMS.txt dist/provenance.sigstore.json
+            dist/skills/*.zip dist/plugins/*.zip dist/copilot-cowork/*.zip dist/all-skills.zip dist/SHA256SUMS.txt dist/provenance.sigstore.json
