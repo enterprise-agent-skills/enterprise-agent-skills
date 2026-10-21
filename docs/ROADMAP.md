@@ -19,7 +19,7 @@ items under "Next" are not built yet.
 | CI | PR validation, security, scheduled quality report, optional live evaluation (disabled by default) |
 | Contributor tooling | `new:skill` scaffolder (with SAP metadata for ABAP skills), templates, `export:upstream` for microsoft/skills |
 | Community files | Contributing guide, code of conduct, security policy, governance, attribution, issue and PR templates |
-| Publication | Public repository [frontier-agent-skills/frontier-agent-skills-plugins](https://github.com/frontier-agent-skills/frontier-agent-skills-plugins) with protected `main` (pull requests and the `static-and-mock` and `scan` checks required), private vulnerability reporting, Dependabot, secret scanning with push protection, and Discussions |
+| Publication | Public repository [enterprise-agent-skills/enterprise-agent-skills](https://github.com/enterprise-agent-skills/enterprise-agent-skills) with protected `main` (pull requests and the `static-and-mock` and `scan` checks required), private vulnerability reporting, Dependabot, secret scanning with push protection, and Discussions |
 
 ## Next
 

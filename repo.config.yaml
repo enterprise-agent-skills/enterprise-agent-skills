@@ -2,14 +2,14 @@
 # duplicate these values elsewhere. Run `npm run build` after editing.
 
 repository:
-  name: frontier-agent-skills-plugins
+  name: enterprise-agent-skills
   # GitHub organization that owns the repository. Install commands, marketplace files, and
   # links are generated from it.
-  owner: frontier-agent-skills
+  owner: enterprise-agent-skills
   default_branch: main
   license: MIT
-  marketplace_name: frontier-agent-skills
-  marketplace_display_name: Frontier Agent Skills and Plugins
+  marketplace_name: enterprise-agent-skills
+  marketplace_display_name: Enterprise Agent Skills
   description: >-
     Vendor-neutral Agent Skills and plugins for enterprise platforms, with
     acceptance criteria and credential-free tests for every skill.

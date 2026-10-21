@@ -2,7 +2,7 @@
 
 ## First release
 
-1. Create the GitHub organization and the repository `frontier-agent-skills-plugins`.
+1. Create the GitHub organization and the repository `enterprise-agent-skills`.
 2. Set `repository.owner` in `repo.config.yaml` to the organization name, run
    `npm run build`, and commit. The owner placeholder warning in `npm run validate` disappears.
 3. Fill in maintainer names and the private conduct contact in [GOVERNANCE.md](../GOVERNANCE.md),

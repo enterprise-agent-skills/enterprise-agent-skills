@@ -24,21 +24,21 @@ Guidance is grounded in Microsoft Learn documentation for Fabric Data Engineerin
 
 ```text
 # Claude Code
-/plugin marketplace add frontier-agent-skills/frontier-agent-skills-plugins
-/plugin install microsoft-fabric@frontier-agent-skills
+/plugin marketplace add enterprise-agent-skills/enterprise-agent-skills
+/plugin install microsoft-fabric@enterprise-agent-skills
 
 # GitHub Copilot CLI
-copilot plugin marketplace add frontier-agent-skills/frontier-agent-skills-plugins
-copilot plugin install microsoft-fabric@frontier-agent-skills
+copilot plugin marketplace add enterprise-agent-skills/enterprise-agent-skills
+copilot plugin install microsoft-fabric@enterprise-agent-skills
 
 # OpenAI Codex (then open /plugins)
-codex plugin marketplace add frontier-agent-skills/frontier-agent-skills-plugins
+codex plugin marketplace add enterprise-agent-skills/enterprise-agent-skills
 
 # Any Agent Skills compatible agent (Copilot in VS Code, Cursor, Gemini CLI, and others)
-npx skills add frontier-agent-skills/frontier-agent-skills-plugins --skill fabric-lakehouse-incremental-merge
+npx skills add enterprise-agent-skills/enterprise-agent-skills --skill fabric-lakehouse-incremental-merge
 ```
 
-Claude Cowork and claude.ai: Customize > Plugins > Add > Add marketplace, then enter `https://github.com/frontier-agent-skills/frontier-agent-skills-plugins`.
+Claude Cowork and claude.ai: Customize > Plugins > Add > Add marketplace, then enter `https://github.com/enterprise-agent-skills/enterprise-agent-skills`.
 
 ## Data and permissions
 

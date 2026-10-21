@@ -1,4 +1,4 @@
-# Frontier Agent Skills and Plugins
+# Enterprise Agent Skills
 
 Agent Skills and plugins for enterprise platforms such as SAP, Microsoft, and Salesforce, with
 AWS, Google Cloud, and others to follow. One source folder per plugin installs in Claude Code,
@@ -19,27 +19,27 @@ by SAP, Microsoft, Salesforce, or any other vendor named here.
 <!-- BEGIN GENERATED: plugins (edit with npm run build) -->
 | Plugin | Vendor | Skills | Install name | Maturity |
 | --- | --- | --- | --- | --- |
-| [ABAP development skills for SAP S/4HANA, SAP ECC, and SAP BTP](plugins/sap-abap/README.md) | SAP | `sap-abap-standard`, `sap-abap-enhancements`, `sap-abap-integration`, `sap-rap-business-object`, `sap-clean-core-check` | `sap-abap@frontier-agent-skills` | beta |
-| [Microsoft Fabric Data Engineering](plugins/microsoft-fabric/README.md) | Microsoft | `fabric-lakehouse-incremental-merge` | `microsoft-fabric@frontier-agent-skills` | beta |
-| [Salesforce Platform Development](plugins/salesforce-platform/README.md) | Salesforce | `salesforce-apex-trigger-framework` | `salesforce-platform@frontier-agent-skills` | beta |
+| [ABAP development skills for SAP S/4HANA, SAP ECC, and SAP BTP](plugins/sap-abap/README.md) | SAP | `sap-abap-standard`, `sap-abap-enhancements`, `sap-abap-integration`, `sap-rap-business-object`, `sap-clean-core-check` | `sap-abap@enterprise-agent-skills` | beta |
+| [Microsoft Fabric Data Engineering](plugins/microsoft-fabric/README.md) | Microsoft | `fabric-lakehouse-incremental-merge` | `microsoft-fabric@enterprise-agent-skills` | beta |
+| [Salesforce Platform Development](plugins/salesforce-platform/README.md) | Salesforce | `salesforce-apex-trigger-framework` | `salesforce-platform@enterprise-agent-skills` | beta |
 
 ```text
 # Claude Code
-/plugin marketplace add frontier-agent-skills/frontier-agent-skills-plugins
-/plugin install <plugin>@frontier-agent-skills
+/plugin marketplace add enterprise-agent-skills/enterprise-agent-skills
+/plugin install <plugin>@enterprise-agent-skills
 
 # GitHub Copilot CLI
-copilot plugin marketplace add frontier-agent-skills/frontier-agent-skills-plugins
-copilot plugin install <plugin>@frontier-agent-skills
+copilot plugin marketplace add enterprise-agent-skills/enterprise-agent-skills
+copilot plugin install <plugin>@enterprise-agent-skills
 
 # OpenAI Codex (then open /plugins)
-codex plugin marketplace add frontier-agent-skills/frontier-agent-skills-plugins
+codex plugin marketplace add enterprise-agent-skills/enterprise-agent-skills
 
 # Any Agent Skills compatible agent (Copilot in VS Code, Cursor, Gemini CLI, and others)
-npx skills add frontier-agent-skills/frontier-agent-skills-plugins --skill <skill>
+npx skills add enterprise-agent-skills/enterprise-agent-skills --skill <skill>
 ```
 
-Claude Cowork and claude.ai: Customize > Plugins > Add > Add marketplace, then enter `https://github.com/frontier-agent-skills/frontier-agent-skills-plugins`.
+Claude Cowork and claude.ai: Customize > Plugins > Add > Add marketplace, then enter `https://github.com/enterprise-agent-skills/enterprise-agent-skills`.
 <!-- END GENERATED: plugins -->
 
 Install only the plugins you need. Every skill an agent loads takes up context, and unrelated

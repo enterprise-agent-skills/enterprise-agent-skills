@@ -1,16 +1,16 @@
 {
-  "name": "frontier-agent-skills-plugins",
+  "name": "enterprise-agent-skills",
   "version": "0.1.0",
   "private": true,
   "description": "Vendor-neutral Agent Skills and plugins for enterprise platforms (SAP, Microsoft, Salesforce, AWS, Google Cloud and others), validated without paid model credentials.",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/frontier-agent-skills/frontier-agent-skills-plugins.git"
+    "url": "git+https://github.com/enterprise-agent-skills/enterprise-agent-skills.git"
   },
-  "homepage": "https://github.com/frontier-agent-skills/frontier-agent-skills-plugins#readme",
+  "homepage": "https://github.com/enterprise-agent-skills/enterprise-agent-skills#readme",
   "bugs": {
-    "url": "https://github.com/frontier-agent-skills/frontier-agent-skills-plugins/issues"
+    "url": "https://github.com/enterprise-agent-skills/enterprise-agent-skills/issues"
   },
   "type": "module",
   "engines": {

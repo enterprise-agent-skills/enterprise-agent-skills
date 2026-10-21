@@ -44,9 +44,9 @@ function context(model) {
     urls,
     tax,
     repo,
-    marketplace: repo.marketplace_name ?? "frontier-agent-skills",
+    marketplace: repo.marketplace_name ?? "enterprise-agent-skills",
     license: repo.license ?? "MIT",
-    defaultAuthor: { name: `${repo.marketplace_display_name ?? "Frontier Agent Skills"} contributors`, url: urls.repo },
+    defaultAuthor: { name: `${repo.marketplace_display_name ?? "Enterprise Agent Skills"} contributors`, url: urls.repo },
     mcpById: Object.fromEntries((model.mcpRegistry?.servers ?? []).map((s) => [s.id, s])),
     // Display order follows the vendor list in repo.config.yaml (SAP first), not the alphabet.
     vendorRank: Object.fromEntries((model.config?.vendors ?? []).map((v, i) => [v.id, i])),

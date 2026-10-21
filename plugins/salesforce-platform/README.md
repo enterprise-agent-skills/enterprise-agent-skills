@@ -24,21 +24,21 @@ Every Apex sample in the skill and its tests is parsed with the open-source Apex
 
 ```text
 # Claude Code
-/plugin marketplace add frontier-agent-skills/frontier-agent-skills-plugins
-/plugin install salesforce-platform@frontier-agent-skills
+/plugin marketplace add enterprise-agent-skills/enterprise-agent-skills
+/plugin install salesforce-platform@enterprise-agent-skills
 
 # GitHub Copilot CLI
-copilot plugin marketplace add frontier-agent-skills/frontier-agent-skills-plugins
-copilot plugin install salesforce-platform@frontier-agent-skills
+copilot plugin marketplace add enterprise-agent-skills/enterprise-agent-skills
+copilot plugin install salesforce-platform@enterprise-agent-skills
 
 # OpenAI Codex (then open /plugins)
-codex plugin marketplace add frontier-agent-skills/frontier-agent-skills-plugins
+codex plugin marketplace add enterprise-agent-skills/enterprise-agent-skills
 
 # Any Agent Skills compatible agent (Copilot in VS Code, Cursor, Gemini CLI, and others)
-npx skills add frontier-agent-skills/frontier-agent-skills-plugins --skill salesforce-apex-trigger-framework
+npx skills add enterprise-agent-skills/enterprise-agent-skills --skill salesforce-apex-trigger-framework
 ```
 
-Claude Cowork and claude.ai: Customize > Plugins > Add > Add marketplace, then enter `https://github.com/frontier-agent-skills/frontier-agent-skills-plugins`.
+Claude Cowork and claude.ai: Customize > Plugins > Add > Add marketplace, then enter `https://github.com/enterprise-agent-skills/enterprise-agent-skills`.
 
 ## Data and permissions
 

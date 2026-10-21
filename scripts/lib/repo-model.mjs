@@ -20,7 +20,7 @@ export function loadRepository() {
 
 export function repoUrls(config) {
   const owner = config?.repository?.owner ?? OWNER_PLACEHOLDER;
-  const name = config?.repository?.name ?? "frontier-agent-skills-plugins";
+  const name = config?.repository?.name ?? "enterprise-agent-skills";
   const branch = config?.repository?.default_branch ?? "main";
   const base = `https://github.com/${owner}/${name}`;
   return {

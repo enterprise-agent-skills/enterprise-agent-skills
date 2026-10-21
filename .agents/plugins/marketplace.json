@@ -1,7 +1,7 @@
 {
-  "name": "frontier-agent-skills",
+  "name": "enterprise-agent-skills",
   "interface": {
-    "displayName": "Frontier Agent Skills and Plugins"
+    "displayName": "Enterprise Agent Skills"
   },
   "plugins": [
     {
