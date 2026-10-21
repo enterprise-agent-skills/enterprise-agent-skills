@@ -409,7 +409,7 @@ business owner agrees; an edited IDoc keeps the original in status 70.
 ## Sources (checked 2026-10-15)
 
 - [Inbound function module interface, NetWeaver 7.3](https://help.sap.com/SAPhelp_nw73/helpdata/en/4a/6d4fe6c952619fe10000000a421937/content.htm)
-  and [result conventions](https://help.sap.com/SAPhelp_nw73/helpdata/en/4a/684ebd4d686fbde10000000a42189c.html)
+  and [result conventions](https://help.sap.com/SAPhelp_nw73/helpdata/en/4a/684ebd4d686fbde10000000a42189c/content.htm)
 - [Parameters of the inbound function module, 4.6C](https://help.sap.com/saphelp_46c/helpdata/en/dc/6b7df143d711d1893e0000e8323c4f/content.htm)
 - [No commit in the application function module](https://help.sap.com/docs/ABAP_PLATFORM_NEW/8f3819b0c24149b5959ab31070b64058/4a6d851657a960e6e10000000a42189b.html)
 - [MASTER_IDOC_DISTRIBUTE, 4.70](https://help.sap.com/saphelp_470/helpdata/EN/78/21783151ce11d189570000e829fbbd/content.htm)

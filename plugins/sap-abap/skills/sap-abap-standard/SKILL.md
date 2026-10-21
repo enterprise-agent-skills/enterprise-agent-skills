@@ -7,16 +7,19 @@ description: >-
   checks, error handling, ABAP Unit, ATC, transports, and troubleshooting, using only syntax the
   target release supports. USE FOR: new or changed reports, classes, function modules, and DDIC
   objects on ECC or S/4HANA; making code compile on an older release; SQL performance problems;
-  dumps and debugging; unit tests and ATC findings in classic development. DO NOT USE FOR: BAdIs,
-  exits, or enhancement implementations (use sap-abap-enhancements), BAPI, RFC, IDoc, or SAP
-  Gateway work (use sap-abap-integration), ABAP Cloud or RAP (use sap-rap-business-object), or
-  released-API assessments (use sap-clean-core-check).
+  dumps and debugging; S/4HANA conversion findings (S4HANA_READINESS); unit tests and ATC
+  findings in classic development. DO NOT USE FOR: BAdIs, exits, or enhancement implementations
+  (use sap-abap-enhancements), BAPI, RFC, IDoc, or SAP Gateway work (use sap-abap-integration),
+  RAP (use sap-rap-business-object; RAP on S/4HANA 1909 to 2021 is not covered), or ABAP Cloud
+  classes and released-API assessments (use sap-clean-core-check).
 license: MIT
 compatibility: >-
   SAP ECC 6.0 (any enhancement package), SAP NetWeaver AS ABAP 7.0 or later, or SAP S/4HANA
   on-premise or Private Edition with Standard ABAP, on SAP HANA or another supported database.
-  SAP GUI; ABAP Development Tools (Eclipse or VS Code) on SAP_BASIS 7.31 SP04 or later.
-  Authorization to create objects in the customer namespace and a transport request.
+  SAP GUI; ABAP Development Tools for Eclipse on SAP_BASIS 7.31 SP04 or later. SAP's ABAP tools
+  for VS Code (first release Q2 2026) start with ABAP Cloud on SAP BTP, S/4HANA Cloud, or
+  S/4HANA 2025 and later. Authorization to create objects in the customer namespace and a
+  transport request.
 metadata:
   vendor: sap
   product: abap
@@ -28,15 +31,16 @@ metadata:
   abap-language-version: "standard"
   sap-basis-min: "7.00"
   abap-env-default: "product=ecc release=ehp8 database=anydb"
-  derived-from: incubator/legacy-cowork-skills/sap-abap-fiori-dev
+  derived-from: earlier unpublished draft sap-abap-fiori-dev
 ---
 
 # Standard ABAP development for ECC, NetWeaver, and S/4HANA
 
 Standard ABAP is the classic development model of every customer-managed SAP system. ABAP
-Cloud restrictions (released APIs only, no `WRITE`, no direct table access) do not apply here
-unless the package uses the ABAP for Cloud Development language version. The hard constraint
-is the release: code that compiles on S/4HANA 2023 can fail on ECC 6.0 EHP6.
+Cloud restrictions (released APIs only, no `WRITE`, no access to SAP tables or other SAP
+objects that are not released) do not apply here unless the object uses the ABAP for Cloud
+Development language version. The hard constraint is the release: code that compiles on
+S/4HANA 2023 can fail on ECC 6.0 EHP6.
 
 Reference files:
 
@@ -79,11 +83,11 @@ the ones before it. Summary (the full table with tested examples and older equiv
 | 7.00, 7.01 | ECC 6.0 up to EHP4 | Classic ABAP only; test classes use `"#AU` pseudo comments and `CL_AUNIT_ASSERT` |
 | 7.02 | ECC EHP5 | String templates, `&&`, string functions such as `to_upper( )`, secondary table keys, method chaining inside expressions, pragmas, `RISK LEVEL` and `DURATION`, `CL_ABAP_UNIT_ASSERT` |
 | 7.31 | ECC EHP6 (NetWeaver 7.0 EHP3, renamed 7.3 EHP1) | Chained method calls as standalone statements |
-| 7.40 SP02 | ECC EHP7 | Inline declarations `DATA( )`, `VALUE`, `NEW`, `CONV`, `CAST`, `COND`, `SWITCH`, table expressions `itab[ ]`, `line_exists( )`, `WITH EMPTY KEY` |
+| 7.40 SP02 | ECC EHP7 | Inline declarations `DATA( )`, `VALUE`, `NEW`, `CONV`, `CAST`, `COND`, `SWITCH`, table expressions `itab[ ]`, `line_exists( )`, `ipow( )`, `WITH EMPTY KEY` |
 | 7.40 SP05 | ECC EHP7 | New ABAP SQL syntax (comma lists, `@` host variables, SQL expressions; `INTO` still before `WHERE`), `CORRESPONDING`, `LET`, `FOR ... IN` inside `VALUE`, DDIC-based CDS views, AMDP (SAP HANA only) |
 | 7.40 SP08 | ECC EHP7 | `INTO` as the last clause and `INTO TABLE @DATA( )` in ABAP SQL, searched `CASE WHEN` in SQL, `REDUCE`, `FILTER`, `FOR ... UNTIL`, `LOOP AT ... GROUP BY`, `BASE`, `LINES OF` in `VALUE`, `OPTIONAL` and `DEFAULT` for table expressions, `xsdbool( )` |
 | 7.50 | ECC EHP8, S/4HANA 1511 | Test seams, host expressions `@( )`, `UNION`, `IS INSTANCE OF`, CDS table functions (SAP HANA only) |
-| 7.51 to 7.54 | S/4HANA 1610 to 1909 | Common table expressions `WITH`, `OFFSET`, and enumerated types (7.51), `SELECT ... FROM @itab` (7.52), `+=` (7.54) |
+| 7.51 to 7.54 | S/4HANA 1610 to 1909 | Common table expressions `WITH`, `OFFSET`, and enumerated types (7.51), `SELECT ... FROM @itab` (7.52), `+=` and the time stamp type `utclong` (7.54) |
 | 7.55 and later | S/4HANA 2020 and later | CDS view entities |
 | 7.57 and later | S/4HANA 2022 and later | `FINAL( )` declarations, `LOOP AT ... STEP` |
 | 8.16 | S/4HANA 2025 | Successor of 7.58 (there is no 7.59) |

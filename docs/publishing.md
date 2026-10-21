@@ -17,8 +17,10 @@
      requests);
    - add topics such as `agent-skills`, `claude-code`, `github-copilot`, `sap`, `abap`,
      `microsoft-fabric`, `salesforce`, `mcp`.
-5. Run `npm run check` and `npm run eval:vally` on a clean checkout and attach the reports to a
-   GitHub release `v0.1.0`.
+5. Run `npm run check` and `npm run eval:vally` on a clean checkout, then tag the release:
+   `git tag v0.1.0 && git push origin v0.1.0`. The `release` workflow runs the checks again,
+   builds one ZIP per skill and per plugin plus `all-skills.zip` (`npm run package`), tests
+   every archive, and attaches them with `SHA256SUMS.txt` to the GitHub release.
 6. Run `claude plugin validate` on each plugin folder and record the result in
    [platform-compatibility.md](platform-compatibility.md).
 7. Install each plugin on at least one platform and record it in the verification table.
@@ -33,6 +35,21 @@ After end-to-end verification on a platform:
 | github/awesome-copilot external plugins | Use the external plugin issue form in that repository |
 | skills.sh | Listing follows installs through `npx skills add` |
 | Agent Skills and MCP community directories | Submit the repository link where accepted |
+
+## Releases
+
+Every tag `v*` creates a GitHub release with downloadable packages, built by
+`scripts/package.mjs` and `.github/workflows/release.yml`:
+
+| Asset | Contents |
+|-------|----------|
+| `<skill>.zip` | One folder named after the skill, with `SKILL.md` inside |
+| `plugin-<plugin>.zip` | The plugin folder with every platform manifest |
+| `all-skills.zip` | Every skill folder at the top level |
+| `SHA256SUMS.txt` | Checksums of all archives |
+
+The archives are reproducible: the same commit always produces the same bytes. Build them
+locally with `npm run package` (output in `dist/`, which Git ignores).
 
 ## Versioning
 

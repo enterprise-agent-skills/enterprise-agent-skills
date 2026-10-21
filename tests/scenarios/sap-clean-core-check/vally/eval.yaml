@@ -76,8 +76,9 @@ stimuli:
   - name: assessment-report
     prompt: |-
       Our custom code uses these SAP objects: VBAK, KNA1, BKPF, I_SALESORDER, and
-      CL_ABAP_UNIT_ASSERT. Tell me which ones are released for ABAP Cloud, what to use
-      instead for the others, and how you know.
+      CL_ABAP_UNIT_ASSERT. We are moving it to SAP S/4HANA Cloud Public Edition. Tell me
+      which ones are released for ABAP Cloud, what to use instead for the others, and how you
+      know.
     tags:
       scenario: assessment_report
       labels: "assessment report released-api"
@@ -85,7 +86,7 @@ stimuli:
       inline: |
         --- /dev/null
         +++ b/response.txt
-        @@ -0,0 +1,15 @@
+        @@ -0,0 +1,17 @@
         +Source: SAP Cloudification Repository, objectReleaseInfoLatest.json
         +(https://github.com/SAP/abap-atc-cr-cv-s4hc), looked up with scripts/lookup_api_state.py.
         +
@@ -100,7 +101,9 @@ stimuli:
         +Replace the three table reads with the successor views and map the fields the code
         +uses. Then confirm with ATC in your system using the check "Usage of Released APIs
         +(Cloudification Repository)". The repository data is the same content that check
-        +uses, so re-run the lookup if your system is on a different release.
+        +uses. This file is for S/4HANA Cloud Public Edition; for SAP BTP ABAP environment or
+        +S/4HANA on premises, re-run the lookup with objectReleaseInfo_BTPLatest.json or the PCE
+        +file of your release and feature pack stack.
     graders:
       - type: run-command
         name: checks-assessment-report

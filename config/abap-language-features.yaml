@@ -379,6 +379,22 @@ features:
         WAIT UNTIL gv_done = abap_true UP TO 30 SECONDS.
     source: ABAP Keyword Documentation, ABAP Channels in Release 7.40 SP02 (new variants of WAIT UNTIL)
 
+  - id: ipow-function
+    name: Integer power function ipow( )
+    since: "7.40 SP02"
+    syntax: "lv_result = ipow( base = lv_base exp = 3 )."
+    older: "The ** operator, for example lv_result = lv_base ** 3."
+    checked_by: rule:ipow-function
+    test: |
+      DATA lv_result TYPE i.
+      START-OF-SELECTION.
+        lv_result = ipow( base = 2 exp = 3 ).
+    test_older: |
+      DATA lv_result TYPE i.
+      START-OF-SELECTION.
+        lv_result = 2 ** 3.
+    source: ABAP Keyword Documentation, Expressions in Release 7.40 SP02 (new predefined function ipow)
+
   # ------------------------------------------------------------------ 7.40 SP05
   - id: sql-new-syntax
     name: ABAP SQL with comma-separated lists and @ host variables
@@ -921,6 +937,22 @@ features:
       START-OF-SELECTION.
         lv_count = lv_count + 1.
     source: ABAP Keyword Documentation, Changes in Release 7.54 (calculation assignments)
+
+  - id: utclong-type
+    name: Built-in time stamp type utclong and utclong_current( )
+    since: "7.54"
+    syntax: "DATA lv_created TYPE utclong.  lv_created = utclong_current( )."
+    older: "Packed time stamps of type TIMESTAMPL with GET TIME STAMP FIELD"
+    checked_by: rule:utclong-type
+    test: |
+      DATA lv_created TYPE utclong.
+      START-OF-SELECTION.
+        lv_created = utclong_current( ).
+    test_older: |
+      DATA lv_created TYPE timestampl.
+      START-OF-SELECTION.
+        GET TIME STAMP FIELD lv_created.
+    source: ABAP Keyword Documentation, Data Types in Release 7.54 (built-in time stamp type utclong) and Time Stamp Functions (7.54)
 
   - id: final-declarations
     name: Immutable inline declarations FINAL( )

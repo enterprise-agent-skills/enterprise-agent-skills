@@ -1,4 +1,4 @@
-import { splitIntoFiles, joinForPatterns, defaultFileFor } from "./files.mjs";
+import { splitIntoFiles, joinForPatterns, defaultFileFor, stripComments } from "./files.mjs";
 import { checkPatterns } from "./patterns.mjs";
 import { runValidators } from "./validators.mjs";
 import { resolveEnvironment } from "./sap-env.mjs";
@@ -50,7 +50,11 @@ export async function evaluateResponse(scenario, input, { strictValidators = fal
   const abapEnv = envSpec ? resolveEnvironment(envSpec) : null;
   if (abapEnv && !abapEnv.ok) fail("structure", `Environment: ${abapEnv.errors.join("; ")}`);
 
-  const text = input.files ? files.map((f) => f.content).join("\n") : joinForPatterns(split);
+  // Patterns run on the explanation and on code without comments, so a comment that names a
+  // required statement cannot satisfy an expected pattern, and a comment that names a rejected
+  // one cannot trigger a forbidden pattern. Literals stay. An answer without file markers is
+  // all explanation, as before.
+  const text = input.files ? files.map((f) => stripComments(f.content, f.path)).join("\n") : joinForPatterns(split);
   const { missing, present } = checkPatterns(text, scenario.expected_patterns, scenario.forbidden_patterns);
   for (const p of present) fail("forbidden_pattern", `Forbidden pattern present: ${p}`);
   for (const p of missing) fail("expected_pattern", `Expected pattern not found: ${p}`);

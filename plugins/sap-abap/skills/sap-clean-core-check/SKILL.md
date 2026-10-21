@@ -4,11 +4,13 @@ description: >-
   Assess custom ABAP code for ABAP Cloud and clean core readiness: find SAP objects that are not
   released, look up their successors in SAP's Cloudification Repository, and rewrite code to use
   released APIs. USE FOR: reviewing custom code before an S/4HANA Cloud or ABAP Cloud migration,
-  replacing direct reads of SAP tables such as VBAK, MARA, BKPF, or KNA1 with released CDS
-  views, explaining ATC findings from the "Usage of APIs" or cloud readiness checks, producing a
-  remediation list for a package. DO NOT USE FOR: building new RAP business objects (use
-  sap-rap-business-object), writing or fixing Standard ABAP that stays on ECC or classic
-  S/4HANA development (use sap-abap-standard), SAP Basis, upgrade, or SUM tasks, functional
+  choosing released APIs for new ABAP Cloud classes, replacing direct reads of SAP tables such
+  as VBAK, MARA, BKPF, or KNA1 with released CDS views, explaining ATC findings from the "Usage
+  of APIs" or cloud readiness checks, producing a remediation list for a package. DO NOT USE
+  FOR: building new RAP business objects (use sap-rap-business-object), writing or fixing
+  Standard ABAP that stays on ECC or classic S/4HANA development (use sap-abap-standard),
+  S/4HANA conversion findings from S4HANA_READINESS (use sap-abap-standard), clean core levels
+  of exits and BAdIs (use sap-abap-enhancements), SAP Basis, upgrade, or SUM tasks, functional
   configuration, or performance tuning.
 license: MIT
 compatibility: >-
@@ -41,14 +43,22 @@ released.
 
 | Target | File in `src/` |
 |--------|----------------|
-| SAP S/4HANA Cloud Public Edition, SAP BTP ABAP environment | `objectReleaseInfoLatest.json` |
-| SAP S/4HANA Cloud Private Edition or on-premise | `objectReleaseInfo_PCE<release>.json` for the target release |
-| Classic API classification for clean core in private cloud or on-premise | `objectClassifications_SAP.json` |
+| SAP S/4HANA Cloud Public Edition | `objectReleaseInfoLatest.json` (the script default) |
+| SAP BTP ABAP environment | `objectReleaseInfo_BTPLatest.json` |
+| SAP S/4HANA on premises or Private Edition 2022, 2023, 2025 | The file for the release and feature pack stack: `objectReleaseInfo_PCE2022.json`, `objectReleaseInfo_PCE2022_1.json`, `objectReleaseInfo_PCE2022_2.json`, `objectReleaseInfo_PCE2023_0.json` to `objectReleaseInfo_PCE2023_3.json`, `objectReleaseInfo_PCE2025_0.json` to `objectReleaseInfo_PCE2025_2.json`; `objectReleaseInfo_PCELatest.json` is the newest |
+| Classic APIs (clean core level B) on Private Edition, on premises, and ECC | `objectClassifications_SAP.json` |
+
+For code that will move to another system, use the file of the target system. SAP's README
+gives `objectReleaseInfo_PCE2025.json` as an example, but that file does not exist; check the
+exact name in https://github.com/SAP/abap-atc-cr-cv-s4hc/tree/main/src (file list checked on
+2026-10-18).
 
 Each entry has `tadirObject`, `tadirObjName`, `state`, and for objects that will not be
-released, `successors`. States are `released`, `deprecated`, and `notToBeReleased`.
-An object missing from the file is not released; treat it like `notToBeReleased` without a
-successor.
+released, `successors`. States are `released`, `deprecated`, and `notToBeReleased`. The PCE
+files also use `notToBeReleasedStable`, which SAP's README does not define and which has no
+successor in any current file; treat it as not released for ABAP Cloud. The classification
+file uses `classicAPI` and `noAPI`. An object missing from the file is not released; treat it
+like `notToBeReleased` without a successor.
 
 ## Workflow
 
@@ -61,8 +71,12 @@ successor.
    python3 scripts/lookup_api_state.py VBAK KNA1 BKPF CL_ABAP_UNIT_ASSERT
    ```
 
-   Add `--source <path-to-local-json>` when the machine has no internet access, and
-   `--json` for machine-readable output. The script accepts only HTTPS URLs or local files.
+   The script reads `objectReleaseInfoLatest.json` (Public Edition) unless you pass
+   `--source`. For any other target, pass the file from the table, for example
+   `python3 scripts/lookup_api_state.py --source https://raw.githubusercontent.com/SAP/abap-atc-cr-cv-s4hc/main/src/objectReleaseInfo_PCE2023_3.json VBAK`,
+   and name the file in the report. Pass `--source <path-to-local-json>` when the machine has
+   no internet access, and `--json` for machine-readable output. The script accepts only HTTPS
+   URLs or local files.
 3. **Plan replacements.** For each `notToBeReleased` or `deprecated` object, take the
    successor from the data. When there are several successors (for example `MARA` lists
    `I_PRODUCT`, `I_PRODUCTPROCUREMENT`, and others), pick the one whose fields the code
@@ -74,7 +88,9 @@ successor.
 5. **Report.** Return the table described under Output format, then the rewritten code.
 6. **Confirm in the system.** The authoritative result is ATC in the customer system with the
    check "Usage of Released APIs (Cloudification Repository)" for cloud targets, or
-   "Usage of APIs" for clean core in private cloud and on-premise. Recommend running it.
+   "Usage of APIs" for clean core in private cloud and on-premise (standard in S/4HANA 2025,
+   SAP Note 3565942 on 2023; for ECC and older releases, run it remotely from ATC on SAP BTP
+   or from a central ATC system). Recommend running it.
 
 ## Verified examples
 
@@ -114,10 +130,22 @@ together with patterns for function modules and for code that has no released su
 
 ## Clean core levels
 
-SAP's clean core guidance from 2025 grades extensions from level A (only released APIs and
-ABAP Cloud) to level D (modifications and other techniques SAP does not recommend). Use the
-level names only after confirming the current definitions in SAP's clean core documentation,
-and always state which data file and date your assessment used.
+In August 2025 SAP replaced the three-tier model with four levels (SAP Cloud ALM help and SAP
+Learning, checked 2026-10-15; SAP Note 3578329 is the authoritative list). The table matches
+sap-abap-enhancements.
+
+| Level | Meaning | ATC result | How the data shows it |
+|-------|---------|------------|-----------------------|
+| A | Released APIs and extension points only, in ABAP for Cloud Development (or side-by-side on SAP BTP) | No finding | Every SAP object used is `released` in the release file of the target, and the object uses ABAP for Cloud Development |
+| B | Classic or released APIs, built with Standard ABAP | Priority 3 | Objects used are `classicAPI` in `objectClassifications_SAP.json` or `released` |
+| C | SAP internal objects, including reads of SAP tables | Priority 2 | Objects that are neither released nor classified, for example a read of VBAK (`notToBeReleased`, not in the classification file) |
+| D | Objects SAP does not recommend, modifications, implicit enhancements, writes to SAP tables | Priority 1 | `noAPI` in `objectClassifications_SAP.json`, or any write to an SAP table |
+
+An extension gets the level of the lowest-ranked technology it uses. The ATC checks "Usage of
+APIs" and "Allowed SAP enhancement technologies" are standard in S/4HANA 2025 and need SAP
+Note 3565942 on 2023. For ECC and S/4HANA below 2023 they run only remotely: from ATC on SAP
+BTP with check variant `ABAP_CLEAN_CORE_READINESS`, or from a central ATC system on S/4HANA
+2023 (with the note) or 2025. State which data files and dates your assessment used.
 
 ## Output format
 

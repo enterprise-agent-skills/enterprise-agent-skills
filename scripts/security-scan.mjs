@@ -1,32 +1,54 @@
 #!/usr/bin/env node
 /**
  * Offline security hygiene scan. Complements GitHub secret scanning, CodeQL, and dependency
- * review (see .github/workflows/security.yml) with checks specific to agent content.
+ * review (see .github/workflows/security.yml) with checks specific to agent content: secrets
+ * and hidden characters in every text file, risky commands and injection phrasing in shipped
+ * content, files under plugins/ that cannot be reviewed (unknown types, compiled code,
+ * symbolic links), and lockfiles that resolve packages from a registry other than npmjs.org.
+ * File selection and the pure checks live in scripts/lib/security-rules.mjs.
  *
  * Writes reports/security.json and reports/security.md. Exit code 1 on any error.
  */
-import { extname, join } from "node:path";
+import { lstatSync } from "node:fs";
+import { join } from "node:path";
 import { REPO_ROOT, PATHS } from "./lib/constants.mjs";
-import { exists, readText, rel, TEXT_EXTENSIONS, walkFiles } from "./lib/fsutil.mjs";
+import { exists, readText, rel, walkFiles } from "./lib/fsutil.mjs";
 import { Findings } from "./lib/findings.mjs";
 import { appendJobSummary, mdTable, writeReport } from "./lib/report.mjs";
-import { ASSIGNMENT_RULE, CONTENT_RULES, HIDDEN_UNICODE, SECRET_RULES } from "./lib/security-rules.mjs";
+import { ASSIGNMENT_RULE, CONTENT_RULES, HIDDEN_UNICODE, SECRET_RULES, classifyScanFile, linesForScan, lockfileRegistryProblems } from "./lib/security-rules.mjs";
 
 const findings = new Findings("security");
 const allowlist = loadAllowlist();
 const scripts = [];
 let scanned = 0;
 
-for (const absFile of walkFiles(REPO_ROOT)) {
+// Everything under plugins/ ships to users, so no folder name is skipped there: a folder named
+// reports or node_modules inside a skill would otherwise be left out of the scan but still be
+// installed. Symbolic links are listed so they can be reported; they are never followed.
+const pluginsPrefix = `${PATHS.plugins}/`;
+const candidates = [
+  ...walkFiles(REPO_ROOT, { links: true }).filter((f) => !rel(f).startsWith(pluginsPrefix)),
+  ...walkFiles(join(REPO_ROOT, PATHS.plugins), { links: true, skip: new Set([".git"]) }),
+];
+
+for (const absFile of candidates) {
   const file = rel(absFile);
-  const ext = extname(file).toLowerCase() || `.${file.split("/").pop()}`;
-  if (!TEXT_EXTENSIONS.has(ext) && !["LICENSE", "CODEOWNERS"].includes(file.split("/").pop())) continue;
-  if (file === "package-lock.json") continue;
+  const { action, script, finding } = classifyScanFile(file, { isLink: lstatSync(absFile).isSymbolicLink() });
+  if (script) scripts.push(file);
+  if (finding) findings.add(finding.level, finding.code, finding.message, { file });
+  if (action === "skip") continue;
+  const text = readText(absFile);
+  if (action === "lockfile") {
+    for (const p of lockfileRegistryProblems(text)) {
+      findings.error("LOCKFILE_REGISTRY", `Package resolved from ${p.source}, not from https://registry.npmjs.org/. A registry configured on one machine leaks its host name and can break installs for everyone else. Regenerate the lockfile with registry=https://registry.npmjs.org/.`, { file, line: p.line });
+    }
+    continue;
+  }
   scanned++;
   const shipped = file.startsWith("plugins/");
   const testContent = file.startsWith("tests/scenarios/");
-  const lines = readText(absFile).split("\n");
-  if (/^plugins\/[^/]+\/skills\/[^/]+\/scripts\//.test(file)) scripts.push(file);
+  const { bom, lines } = linesForScan(text);
+  if (bom) findings.warn("UTF8_BOM", "File starts with a UTF-8 byte order mark. The frontmatter and JSON loaders reject it; save the file as UTF-8 without BOM.", { file, line: 1 });
 
   lines.forEach((line, i) => {
     const prev = i > 0 ? lines[i - 1] : "";
@@ -63,7 +85,7 @@ const md = [
   `Scanned ${scanned} text files. ${sum.errors} error(s), ${sum.warnings} warning(s). Bundled skill scripts requiring human review: ${scripts.length}.`,
   "",
   findings.items.filter((f) => f.level !== "info").length
-    ? mdTable(["Level", "Rule", "Location", "Message"], findings.items.filter((f) => f.level !== "info").map((f) => [f.level, f.code, `${f.file}:${f.line}`, f.message]))
+    ? mdTable(["Level", "Rule", "Location", "Message"], findings.items.filter((f) => f.level !== "info").map((f) => [f.level, f.code, f.line ? `${f.file}:${f.line}` : f.file, f.message]))
     : "No findings.",
   "",
   scripts.length ? `Scripts: ${scripts.map((s) => `\`${s}\``).join(", ")}` : "",

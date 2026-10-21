@@ -5,6 +5,18 @@
   },
   "plugins": [
     {
+      "name": "sap-abap",
+      "source": {
+        "source": "local",
+        "path": "./plugins/sap-abap"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Development"
+    },
+    {
       "name": "microsoft-fabric",
       "source": {
         "source": "local",
@@ -21,18 +33,6 @@
       "source": {
         "source": "local",
         "path": "./plugins/salesforce-platform"
-      },
-      "policy": {
-        "installation": "AVAILABLE",
-        "authentication": "ON_INSTALL"
-      },
-      "category": "Development"
-    },
-    {
-      "name": "sap-abap",
-      "source": {
-        "source": "local",
-        "path": "./plugins/sap-abap"
       },
       "policy": {
         "installation": "AVAILABLE",

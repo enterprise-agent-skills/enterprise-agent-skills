@@ -1,5 +1,5 @@
 name: sap-abap
-display_name: SAP ABAP Development
+display_name: ABAP development skills for SAP S/4HANA, SAP ECC, and SAP BTP
 version: 0.2.0
 description: >-
   Skills for SAP ABAP development across customer-managed and cloud systems: Standard ABAP on SAP
@@ -9,13 +9,16 @@ long_description: >-
   Each skill states the SAP products, SAP_BASIS releases, and ABAP development model it targets.
   Where SAP runs does not change the development model: an ECC system on Azure VMs is still
   classic ECC with Standard ABAP. Code samples and test answers are parsed offline with abaplint
-  using the grammar of the target release, so syntax that an older release does not support is
-  rejected. Activation, ATC results, and runtime behavior still need a real system; see
-  docs/sap-environments.md and docs/testing.md.
+  using the grammar of the target release, plus release rules for syntax abaplint accepts too
+  early. That rejects most syntax an older release does not support, but not all of it;
+  docs/sap-environments.md lists the gaps. Activation, ATC results, and runtime behavior still
+  need a real system; see docs/sap-environments.md and docs/testing.md.
 vendor: sap
 category: development
 keywords: [sap, abap, ecc, netweaver, s4hana, abap-cloud, rap, enhancements, idoc, odata, clean-core]
 maturity: beta
+# Broadest skill first; the README and catalog list the skills in this order.
+skill_order: [sap-abap-standard, sap-abap-enhancements, sap-abap-integration, sap-rap-business-object, sap-clean-core-check]
 upstream:
   microsoft_skills: not-applicable
   notes: SAP-specific content is outside the scope of github.com/microsoft/skills.

@@ -15,3 +15,6 @@ __pycache__/
 # Local reference copy of a third-party plugin package (Anthropic design plugin sample).
 # It is not part of this repository.
 design.plugin
+
+# Release packages built by npm run package
+dist/

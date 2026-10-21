@@ -211,9 +211,13 @@ export function findPython() {
   return pythonCommand;
 }
 
+// The source is read as bytes: ast.parse decodes them as UTF-8 (or by a coding cookie), while
+// sys.stdin.read() would use the console code page on Windows, and -I ignores PYTHONUTF8.
+// stdout is UTF-8 so a message that quotes a non-ASCII character reaches Node intact.
 const PY_CHECK = [
   "import ast, sys",
-  "src = sys.stdin.read()",
+  "sys.stdout.reconfigure(encoding='utf-8')",
+  "src = sys.stdin.buffer.read()",
   "try:",
   "    ast.parse(src, filename=sys.argv[1])",
   "except SyntaxError as e:",

@@ -9,13 +9,15 @@ They prove that:
 
 - every manifest, the catalog, and the README regions match their sources;
 - skills, plugins, and scenarios follow the schemas and naming rules;
-- code samples marked with a file marker parse in the real language parser;
+- code samples that start with a file marker parse in the real language parser, for the file
+  types in the [Validators](#validators) table;
 - each skill's reference answers satisfy its own expected and forbidden patterns;
-- each check can fail: empty answers fail, and every documented bad answer fails for the
+- each scenario can fail: empty answers fail, and every documented bad answer fails for the
   reason named in `caught_by`;
 - every "Incorrect" example in the acceptance criteria is caught by a forbidden pattern, or by
   a validator under the example's target environment;
-- ABAP samples use only syntax that the target SAP release supports (for SAP skills);
+- ABAP and CDS samples that start with a file marker use only syntax that the target SAP
+  release supports, within the limits listed under [Validators](#validators) (for SAP skills);
 - Vally's own lint accepts the skills, and its graders pass on golden answers and fail
   without them.
 
@@ -35,7 +37,8 @@ product behaves as the skill describes. Those need live evaluations and live-sys
   (ABAP, at column 1). ABAP files need abapGit names such as `zcl_name.clas.abap`,
   `zcl_name.clas.locals_imp.abap`, or `zr_entity.ddls.asddls`.
 - Each "Incorrect" example must be caught by a forbidden pattern in one of the skill's
-  scenarios. If no automated check can catch it, put
+  scenarios, or fail a validator under its target environment. If no automated check can
+  catch it, put
   `<!-- not-detectable: reason -->` on the line before the code block; the report lists it.
 
 ## Writing scenarios
@@ -55,8 +58,19 @@ compatible superset of the microsoft/skills schema.
 | `context_files` | Objects that already exist in the target system and that the prompt quotes, for example a BAdI interface: a list of `path` and `content`. Validators parse them together with the answer so references resolve, but only the answer is graded |
 
 Set `caught_by` to `forbidden_pattern`, `validator`, `expected_pattern`, or `environment`. The
-check fails if the bad answer is rejected for some other reason, which keeps each negative
-control honest.
+check fails unless at least one check of that kind rejects the bad answer; other failures are
+allowed. Write each bad answer as the reference answer with one mistake, so it proves that one
+check works. Every scenario needs at least one bad answer, unless the skill is experimental.
+
+Patterns run on the explanation and on code without comments, so a comment never satisfies or
+triggers a pattern. Comments are removed from ABAP, Apex, JavaScript, CDS, and Python files;
+the contents of literals stay. The explanation still counts: where a pattern stands for a
+statement, anchor it to the start of the statement, for example
+`(?im)^\s*CALL\s+FUNCTION\s+'BAPI_TRANSACTION_COMMIT'`.
+
+The mock evaluation warns about a forbidden pattern that no bad answer of its scenario and no
+"Incorrect" example triggers, because nothing would notice if an edit broke it. Add a bad
+answer that trips it.
 
 Use `context_files` only for objects the user would really have, and quote them in the prompt
 as well. Without them, an implementation of an interface that is not part of the answer fails
@@ -69,15 +83,17 @@ file until the next marker or the end of a fenced code block.
 
 | Validator | Files | What it checks | Limits |
 |-----------|-------|----------------|--------|
-| abaplint (`@abaplint/core`) | `.abap`, `.asddls` | ABAP syntax with the grammar of the target release; for Standard ABAP also abaplint's syntax check (undefined variables, statements the release does not support); for ABAP Cloud the cloud object-type rules; CDS DDL syntax | Syntax only: no SAP type information, no released-API check, no runtime; behavior definitions, metadata extensions, and service definitions are not parsed |
+| abaplint (`@abaplint/core`) | `.abap`, `.asddls` | ABAP syntax with the grammar of the target release; for Standard ABAP also abaplint's syntax check (undefined variables, statements the release does not support); for ABAP Cloud the cloud object-type rules; CDS DDL syntax | Syntax only: no SAP type information, no released-API check, no runtime. Function modules (`*.fugr.*.abap`) are parsed with the release grammar but not syntax-checked, because abaplint needs the function group XML; undefined variables in them are not detected, and the inline-declarations rule still applies. Behavior definitions, metadata extensions, and service definitions are not parsed |
 | SAP environment rules (`config/sap-environments.yaml`) | ABAP, CDS, and behavior definition files | Release and database requirements the grammar does not cover: syntax abaplint accepts on releases that are too old (for example `INTO` as the last clause before 7.40 SP08), CDS view entities before 7.55, AMDP and CDS table functions without SAP HANA, RAP behavior definition features before the release that introduced them | Only the features listed in the registry; patterns run on code with comments and literals removed |
 | Apex parser (`@apexdevtools/apex-parser`) | `.cls`, `.trigger` | Apex syntax including inline SOQL | Syntax only |
 | Python `ast` | `.py` | Python 3 syntax | Needs Python 3 on PATH; required in CI |
 | `node --check` | `.js`, `.mjs`, `.cjs` | JavaScript syntax | Syntax only |
 | JSON and YAML parsers | `.json`, `.yaml`, `.yml` | Well-formed documents | No schema unless the scenario adds patterns |
 
-Files without a parser are reported as unvalidated, never as passed. In CI (`CI=true`) an
-unavailable validator fails the run.
+A file without a parser is never counted as passed. The mock evaluation lists such files of
+each reference answer under `unvalidated` in `reports/mock-eval.json`; the snippet check of
+skill documentation skips them without a message. In CI (`CI=true`) an unavailable validator
+fails the run.
 
 ## SAP environments for ABAP
 
@@ -121,9 +137,13 @@ The release checks themselves are tested. `config/abap-language-features.yaml` l
 statements and expressions with the release that introduced them, according to SAP's release
 news, a program that uses each one, and the equivalent without it.
 `tests/unit/abap-release-features.test.mjs` requires every program to fail on the release
-before and pass from that release up to S/4HANA 2025, every equivalent to compile on the older
-release, and a classic program full of look-alikes to pass on 7.00. When abaplint changes its
-release gating, these tests show it.
+before, and to pass on the release that introduced it and on S/4HANA 2025. Every equivalent
+must compile on the release before and on S/4HANA 2025, and a classic program full of
+look-alikes must pass on 7.00 and on S/4HANA 2025. Where the offline check accepts a feature
+later than SAP does, the registry says so in `validator_from`, and the program must also fail
+on the release before that point. Today this applies only to `line_exists( )`, which SAP
+introduced in 7.40 SP02 and the offline check accepts from 7.40 SP08. When abaplint changes
+its release gating, these tests show it.
 
 ## Vally
 
@@ -141,8 +161,16 @@ sees only files, so the explanation part of a reference answer goes into the gol
 
 ## Live model evaluations (optional, off by default)
 
-The generated specs work for live runs too, because the graders inspect files the agent
-writes. To enable the `live-evals` workflow:
+The generated specs can drive live runs too. The graders inspect only the files in the
+workspace, so a live agent must write its answer to files; an answer given only in chat fails.
+Before reading a live failure as a problem with the skill, check that the stimulus prompt asks
+for files.
+
+Forbidden patterns also run on the explanation in `answer.md`. A correct answer that names a
+rejected approach in prose, for example "never call COMMIT WORK in a behavior handler", can
+fail, so review live failures on forbidden patterns by hand.
+
+To enable the `live-evals` workflow:
 
 1. Create a fine-grained token with the Copilot Requests permission and store it as the
    repository secret `COPILOT_TOKEN`.

@@ -2,7 +2,7 @@
 name: sap-abap-enhancements
 description: >-
   Choose and build enhancements of SAP standard code in Standard ABAP on SAP ECC 6.0 and SAP
-  S/4HANA, wherever they run: Customizing first, then BAdIs and exits, modifications last.
+  S/4HANA: Customizing first, then BAdIs and exits, modifications last.
   Covers kernel BAdIs (enhancement spots, filters, fallback classes, GET BADI, CALL BADI),
   classic BAdIs, customer exits (SMOD, CMOD), SD user exits such as MV45AFZZ, source code
   plug-ins, class and function module enhancements, LUW rules in exits, release limits from
@@ -10,9 +10,9 @@ description: >-
   calling a BAdI, finding the right exit for a requirement, customer exit or user exit code,
   reviewing enhancement code, enhancements that stopped working after an upgrade or S/4HANA
   conversion. DO NOT USE FOR: reports, classes, or performance work without an enhancement
-  (use sap-abap-standard), BAPI, RFC, IDoc, or OData work (use sap-abap-integration), RAP or
-  other ABAP Cloud development (use sap-rap-business-object), or released-API assessments
-  (use sap-clean-core-check).
+  (use sap-abap-standard), BAPI, RFC, IDoc, or OData work (use sap-abap-integration), RAP (use
+  sap-rap-business-object; RAP on S/4HANA 1909 to 2021 is not covered), or released-API
+  assessments (use sap-clean-core-check).
 license: MIT
 compatibility: >-
   SAP ECC 6.0 (any enhancement package), SAP NetWeaver AS ABAP 7.0 or later, or SAP S/4HANA
@@ -27,7 +27,6 @@ metadata:
   category: development
   maturity: beta
   version: "0.1.0"
-  last-verified: "2026-10-15"
   sap-products: "ecc, netweaver, s4hana, s4hana-private-cloud"
   sap-deployments: "on-premise, azure-iaas, aws-iaas, gcp-iaas, sap-private-cloud"
   abap-language-version: "standard"
@@ -68,8 +67,13 @@ Ask for anything you cannot see. Do not assume the newest release.
    An exit that works in VA01 can break an IDoc inbound run.
 3. **Who owns the calling code**: SAP (implement what SAP offers there) or you (define a
    kernel BAdI, Step 5).
-4. **Language version** on S/4HANA 2022 or later. This skill covers Standard ABAP. Code in
-   packages with ABAP for Cloud Development follows other rules (sap-rap-business-object).
+4. **Language version** on S/4HANA 2022 or later is set per object and shown in the object's
+   properties in ADT; the package only sets the default for new objects. This skill covers
+   Standard ABAP. If the implementing class uses ABAP for Cloud Development, implement only
+   released BAdIs, create the implementation in ADT, and use only released APIs in the class.
+   Released BAdIs are entries with objectType BADI_DEF in the Cloudification Repository file of
+   the target; look them up by BAdI name with sap-clean-core-check. Customer exits, source code
+   plug-ins, and SE19 are not available in that language version.
 5. **Key user BAdIs** on S/4HANA: if the BAdI is registered in SCFD_REGISTRY, implement it in
    the Custom Logic app. Never create an SE19 implementation for it: SAP states that the
    Custom Logic app can then no longer be used for that BAdI at all.

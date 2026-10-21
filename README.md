@@ -19,9 +19,9 @@ by SAP, Microsoft, Salesforce, or any other vendor named here.
 <!-- BEGIN GENERATED: plugins (edit with npm run build) -->
 | Plugin | Vendor | Skills | Install name | Maturity |
 | --- | --- | --- | --- | --- |
+| [ABAP development skills for SAP S/4HANA, SAP ECC, and SAP BTP](plugins/sap-abap/README.md) | SAP | `sap-abap-standard`, `sap-abap-enhancements`, `sap-abap-integration`, `sap-rap-business-object`, `sap-clean-core-check` | `sap-abap@frontier-agent-skills` | beta |
 | [Microsoft Fabric Data Engineering](plugins/microsoft-fabric/README.md) | Microsoft | `fabric-lakehouse-incremental-merge` | `microsoft-fabric@frontier-agent-skills` | beta |
 | [Salesforce Platform Development](plugins/salesforce-platform/README.md) | Salesforce | `salesforce-apex-trigger-framework` | `salesforce-platform@frontier-agent-skills` | beta |
-| [SAP ABAP Development](plugins/sap-abap/README.md) | SAP | `sap-abap-enhancements`, `sap-abap-integration`, `sap-abap-standard`, `sap-clean-core-check`, `sap-rap-business-object` | `sap-abap@frontier-agent-skills` | beta |
 
 ```text
 # Claude Code
@@ -48,6 +48,18 @@ skills make the agent's choices less reliable.
 ## Skill catalog
 
 <!-- BEGIN GENERATED: catalog (edit with npm run build) -->
+### SAP
+
+SAP skills state the systems and the ABAP development model they target. Where SAP runs (on premises or on Azure, AWS, or Google Cloud VMs) does not change which skill applies. See [docs/sap-environments.md](docs/sap-environments.md).
+
+| Skill | What it does | SAP systems | ABAP model | Category | Maturity | Tests |
+| --- | --- | --- | --- | --- | --- | --- |
+| [sap-abap-standard](plugins/sap-abap/skills/sap-abap-standard/SKILL.md) | Write, fix, and review Standard ABAP for customer-managed SAP systems: SAP ECC 6.0, SAP NetWeaver AS ABAP, and SAP S/4HANA, on premises or on Azure, AWS, or Google Cloud VMs. Covers reports and ALV, ABAP Objects, DDIC objects, ABAP SQL and HANA-aware performance, authorization checks, error handling, ABAP Unit, ATC, transports, and troubleshooting, using only syntax the target release supports. | SAP ECC 6.0, SAP NetWeaver AS ABAP, SAP S/4HANA (on-premise), SAP S/4HANA Cloud Private Edition; SAP_BASIS 7.00+ | Standard ABAP | Development | beta | 4 scenarios, 6 negative controls |
+| [sap-abap-enhancements](plugins/sap-abap/skills/sap-abap-enhancements/SKILL.md) | Choose and build enhancements of SAP standard code in Standard ABAP on SAP ECC 6.0 and SAP S/4HANA: Customizing first, then BAdIs and exits, modifications last. Covers kernel BAdIs (enhancement spots, filters, fallback classes, GET BADI, CALL BADI), classic BAdIs, customer exits (SMOD, CMOD), SD user exits such as MV45AFZZ, source code plug-ins, class and function module enhancements, LUW rules in exits, release limits from SAP_BASIS 7.00 to 8.16, SPAU and SPAU_ENH, and clean core levels. | SAP ECC 6.0, SAP NetWeaver AS ABAP, SAP S/4HANA (on-premise), SAP S/4HANA Cloud Private Edition; SAP_BASIS 7.00+ | Standard ABAP | Development | beta | 7 scenarios, 28 negative controls |
+| [sap-abap-integration](plugins/sap-abap/skills/sap-abap-integration/SKILL.md) | Write and review integration code in Standard ABAP on SAP ECC 6.0, SAP NetWeaver AS ABAP, and SAP S/4HANA: BAPI calls with RETURN checks and caller commit, BAPI-style RFC function modules, synchronous, asynchronous, and background RFC (tRFC, qRFC, bgRFC), IDocs with ALE and EDI, and SAP Gateway OData V2 services built in SEGW, using only syntax and APIs the target release supports. | SAP ECC 6.0, SAP NetWeaver AS ABAP, SAP S/4HANA (on-premise), SAP S/4HANA Cloud Private Edition; SAP_BASIS 7.00+ | Standard ABAP | Integration | beta | 7 scenarios, 24 negative controls |
+| [sap-rap-business-object](plugins/sap-abap/skills/sap-rap-business-object/SKILL.md) | Build a managed RAP business object with draft for SAP Fiori elements on ABAP Cloud: database table, CDS view entities, behavior definition, behavior pool, projection layer, service definition, and service binding. | SAP S/4HANA (on-premise), SAP S/4HANA Cloud Private Edition, SAP S/4HANA Cloud Public Edition, SAP BTP ABAP environment; SAP_BASIS 7.57+ | ABAP Cloud | Development | beta | 4 scenarios, 7 negative controls |
+| [sap-clean-core-check](plugins/sap-abap/skills/sap-clean-core-check/SKILL.md) | Assess custom ABAP code for ABAP Cloud and clean core readiness: find SAP objects that are not released, look up their successors in SAP's Cloudification Repository, and rewrite code to use released APIs. | SAP ECC 6.0, SAP NetWeaver AS ABAP, SAP S/4HANA (on-premise), SAP S/4HANA Cloud Private Edition, SAP S/4HANA Cloud Public Edition, SAP BTP ABAP environment; SAP_BASIS 7.00+ | Standard ABAP, ABAP Cloud | Code quality and review | beta | 2 scenarios, 4 negative controls |
+
 ### Microsoft
 
 | Skill | What it does | Prerequisites | Category | Maturity | Tests |
@@ -59,18 +71,6 @@ skills make the agent's choices less reliable.
 | Skill | What it does | Prerequisites | Category | Maturity | Tests |
 | --- | --- | --- | --- | --- | --- |
 | [salesforce-apex-trigger-framework](plugins/salesforce-platform/skills/salesforce-apex-trigger-framework/SKILL.md) | Implement Apex triggers with the one-trigger-per-object handler pattern: bulk-safe logic, recursion control that works across 200-record chunks, user-mode data access, field-level errors, and unit tests with full batches. | Salesforce org with Apex enabled (Developer Edition, sandbox, or scratch org) and API version 60.0 or later for WITH USER_MODE, AccessLevel.USER_MODE, and the Assert class. Salesforce CLI (sf) to deploy and run tests. | Development | beta | 2 scenarios, 5 negative controls |
-
-### SAP
-
-SAP skills state the systems and the ABAP development model they target. Where SAP runs (on premises or on Azure, AWS, or Google Cloud VMs) does not change which skill applies. See [docs/sap-environments.md](docs/sap-environments.md).
-
-| Skill | What it does | SAP systems | ABAP model | Category | Maturity | Tests |
-| --- | --- | --- | --- | --- | --- | --- |
-| [sap-abap-enhancements](plugins/sap-abap/skills/sap-abap-enhancements/SKILL.md) | Choose and build enhancements of SAP standard code in Standard ABAP on SAP ECC 6.0 and SAP S/4HANA, wherever they run: Customizing first, then BAdIs and exits, modifications last. Covers kernel BAdIs (enhancement spots, filters, fallback classes, GET BADI, CALL BADI), classic BAdIs, customer exits (SMOD, CMOD), SD user exits such as MV45AFZZ, source code plug-ins, class and function module enhancements, LUW rules in exits, release limits from SAP_BASIS 7.00 to 8.16, SPAU and SPAU_ENH, and clean core levels. | SAP ECC 6.0, SAP NetWeaver AS ABAP, SAP S/4HANA (on-premise), SAP S/4HANA Cloud Private Edition; SAP_BASIS 7.00+ | Standard ABAP | Development | beta | 7 scenarios, 28 negative controls |
-| [sap-abap-integration](plugins/sap-abap/skills/sap-abap-integration/SKILL.md) | Write and review integration code in Standard ABAP on SAP ECC 6.0, SAP NetWeaver AS ABAP, and SAP S/4HANA, wherever they run: BAPI calls with RETURN checks and caller commit, BAPI-style RFC function modules, synchronous, asynchronous, and background RFC (tRFC, qRFC, bgRFC), IDocs with ALE and EDI, and SAP Gateway OData V2 services built in SEGW, using only syntax and APIs the target release supports. | SAP ECC 6.0, SAP NetWeaver AS ABAP, SAP S/4HANA (on-premise), SAP S/4HANA Cloud Private Edition; SAP_BASIS 7.00+ | Standard ABAP | Integration | beta | 7 scenarios, 24 negative controls |
-| [sap-abap-standard](plugins/sap-abap/skills/sap-abap-standard/SKILL.md) | Write, fix, and review Standard ABAP for customer-managed SAP systems: SAP ECC 6.0, SAP NetWeaver AS ABAP, and SAP S/4HANA, on premises or on Azure, AWS, or Google Cloud VMs. Covers reports and ALV, ABAP Objects, DDIC objects, ABAP SQL and HANA-aware performance, authorization checks, error handling, ABAP Unit, ATC, transports, and troubleshooting, using only syntax the target release supports. | SAP ECC 6.0, SAP NetWeaver AS ABAP, SAP S/4HANA (on-premise), SAP S/4HANA Cloud Private Edition; SAP_BASIS 7.00+ | Standard ABAP | Development | beta | 4 scenarios, 6 negative controls |
-| [sap-clean-core-check](plugins/sap-abap/skills/sap-clean-core-check/SKILL.md) | Assess custom ABAP code for ABAP Cloud and clean core readiness: find SAP objects that are not released, look up their successors in SAP's Cloudification Repository, and rewrite code to use released APIs. | SAP ECC 6.0, SAP NetWeaver AS ABAP, SAP S/4HANA (on-premise), SAP S/4HANA Cloud Private Edition, SAP S/4HANA Cloud Public Edition, SAP BTP ABAP environment; SAP_BASIS 7.00+ | Standard ABAP, ABAP Cloud | Code quality and review | beta | 2 scenarios, 4 negative controls |
-| [sap-rap-business-object](plugins/sap-abap/skills/sap-rap-business-object/SKILL.md) | Build a managed RAP business object with draft for SAP Fiori elements on ABAP Cloud: database table, CDS view entities, behavior definition, behavior pool, projection layer, service definition, and service binding. | SAP S/4HANA (on-premise), SAP S/4HANA Cloud Private Edition, SAP S/4HANA Cloud Public Edition, SAP BTP ABAP environment; SAP_BASIS 7.57+ | ABAP Cloud | Development | beta | 3 scenarios, 5 negative controls |
 
 No skills yet for: Amazon Web Services, Google Cloud, ServiceNow, Workday, Snowflake, Databricks, Oracle. See [CONTRIBUTING.md](CONTRIBUTING.md) to propose one.
 <!-- END GENERATED: catalog -->

@@ -110,6 +110,7 @@ authorization master ( global )
   validation validateDates on save { create; field BeginDate, EndDate; }
 
   draft action Edit;
+  // On S/4HANA 2022 (7.57) write: draft action Activate;
   draft action Activate optimized;
   draft action Discard;
   draft action Resume;
@@ -318,6 +319,7 @@ strict ( 2 );
 use draft;
 
 define behavior for ZC_Travel alias Travel
+use etag
 {
   use create;
   use update;
@@ -378,5 +380,7 @@ define service ZUI_Travel {
 }
 ```
 
-Create the service binding `ZUI_Travel_O4` in ADT with binding type OData V4 - UI, select
-Publish, then select the entity set and Preview to open the Fiori elements app.
+Create the service binding `ZUI_Travel_O4` in ADT with binding type OData V4 - UI. On SAP BTP
+and Public Edition select Publish. On S/4HANA on premises or Private Edition, publish the
+service group in transaction `/IWFND/V4_ADMIN` instead. Then select the entity set and Preview
+to open the Fiori elements app.

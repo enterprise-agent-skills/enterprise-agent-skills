@@ -239,9 +239,10 @@ stimuli:
       inline: |
         --- /dev/null
         +++ b/answer.md
-        @@ -0,0 +1,2 @@
+        @@ -0,0 +1,3 @@
         +After activating these objects, create service binding ZUI_Travel_O4 with binding type
-        +OData V4 - UI and publish it.
+        +OData V4 - UI and publish it (on premises or in Private Edition, in transaction
+        +/IWFND/V4_ADMIN).
         --- /dev/null
         +++ b/src/zc_travel.ddls.asddls
         @@ -0,0 +1,17 @@
@@ -264,12 +265,13 @@ stimuli:
         +}
         --- /dev/null
         +++ b/src/zc_travel.bdef.asbdef
-        @@ -0,0 +1,17 @@
+        @@ -0,0 +1,18 @@
         +projection;
         +strict ( 2 );
         +use draft;
         +
         +define behavior for ZC_Travel alias Travel
+        +use etag
         +{
         +  use create;
         +  use update;
@@ -317,6 +319,78 @@ stimuli:
         config:
           command: node
           args: [".vally/grade.mjs", "sap-rap-business-object", "ui_service_projection"]
+          timeout: 120s
+  - name: behavior-definition-on-2022
+    prompt: |-
+      We run SAP S/4HANA 2022 on premises (SAP_BASIS 7.57) and develop in ABAP Cloud. Write
+      the behavior definition for our managed, draft-enabled business object ZR_Travel on the
+      table zfa_travel with the draft table zfa_travel_d. Use strict mode 2, a total ETag, all
+      draft actions, and the validation validateDates in the Prepare action.
+
+      Write your explanation to answer.md and each code object to its own file.
+    tags:
+      scenario: behavior_definition_on_2022
+      labels: "draft behavior-definition release"
+    golden_patch:
+      inline: |
+        --- /dev/null
+        +++ b/answer.md
+        @@ -0,0 +1,3 @@
+        +S/4HANA 2022 (SAP_BASIS 7.57) does not have the optimized addition of the Activate draft
+        +action, which needs 7.58 (S/4HANA 2023), so the behavior definition declares Activate
+        +without it.
+        --- /dev/null
+        +++ b/src/zr_travel.bdef.asbdef
+        @@ -0,0 +1,43 @@
+        +managed implementation in class zbp_r_travel unique;
+        +strict ( 2 );
+        +with draft;
+        +
+        +define behavior for ZR_Travel alias Travel
+        +persistent table zfa_travel
+        +draft table zfa_travel_d
+        +etag master LocalLastChangedAt
+        +lock master total etag LastChangedAt
+        +authorization master ( global )
+        +{
+        +  create;
+        +  update;
+        +  delete;
+        +
+        +  field ( numbering : managed, readonly ) TravelUUID;
+        +  field ( readonly ) TravelID, OverallStatus, LocalCreatedBy, LocalCreatedAt,
+        +                     LocalLastChangedBy, LocalLastChangedAt, LastChangedAt;
+        +  field ( mandatory ) CustomerID, BeginDate, EndDate;
+        +
+        +  validation validateDates on save { create; field BeginDate, EndDate; }
+        +
+        +  draft action Edit;
+        +  draft action Activate;
+        +  draft action Discard;
+        +  draft action Resume;
+        +  draft determine action Prepare { validation validateDates; }
+        +
+        +  mapping for zfa_travel
+        +  {
+        +    TravelUUID         = travel_uuid;
+        +    TravelID           = travel_id;
+        +    CustomerID         = customer_id;
+        +    BeginDate          = begin_date;
+        +    EndDate            = end_date;
+        +    OverallStatus      = overall_status;
+        +    LocalCreatedBy     = local_created_by;
+        +    LocalCreatedAt     = local_created_at;
+        +    LocalLastChangedBy = local_last_changed_by;
+        +    LocalLastChangedAt = local_last_changed_at;
+        +    LastChangedAt      = last_changed_at;
+        +  }
+        +}
+    graders:
+      - type: run-command
+        name: checks-behavior-definition-on-2022
+        config:
+          command: node
+          args: [".vally/grade.mjs", "sap-rap-business-object", "behavior_definition_on_2022"]
           timeout: 120s
 scoring:
   threshold: 1.0

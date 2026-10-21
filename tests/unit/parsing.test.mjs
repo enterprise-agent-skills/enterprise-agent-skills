@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parseFrontmatter } from "../../scripts/lib/frontmatter.mjs";
 import { fencedBlocks, markdownLinks } from "../../scripts/lib/markdown.mjs";
-import { splitIntoFiles } from "../harness/files.mjs";
+import { joinForPatterns, splitIntoFiles, stripComments } from "../harness/files.mjs";
 import { compilePattern, checkPatterns, trivialPatterns, literalFallbacks } from "../harness/patterns.mjs";
 import { parseCriteria } from "../harness/criteria.mjs";
 
@@ -42,6 +42,54 @@ test("files: ABAP full-line comment markers work and unsafe paths are rejected",
   assert.equal(r.files[0].path, "src/zcl_a.clas.abap");
   assert.throws(() => splitIntoFiles("// file: ../outside.cls\nx"), /Unsafe/);
   assert.throws(() => splitIntoFiles("// file: /abs/path.cls\nx"), /Unsafe/);
+});
+
+test("comments: ABAP comments go, literals and function module interface lines stay", () => {
+  const abap = [
+    "* We do not use SUM( ) with GROUP BY here.",
+    '*"  IMPORTING VALUE(IV_ORDER) TYPE VBELN',
+    "CALL FUNCTION 'BAPI_TRANSACTION_COMMIT'. \" commit the work",
+    "lv_text = 'He said \"hi\"'. \" a quote inside a literal is not a comment",
+    "lv_tmpl = |Total \"{ lv_sum }\"|. \" templates keep their text",
+    "lv_raw = `a\"b`.",
+    "lv_esc = |a\\|b \"c|. \" an escaped bar does not end the template",
+    "  \" an indented full-line comment",
+  ].join("\n");
+  assert.deepEqual(stripComments(abap, "src/zfa_report.prog.abap").split("\n"), [
+    "",
+    '*"  IMPORTING VALUE(IV_ORDER) TYPE VBELN',
+    "CALL FUNCTION 'BAPI_TRANSACTION_COMMIT'.",
+    "lv_text = 'He said \"hi\"'.",
+    "lv_tmpl = |Total \"{ lv_sum }\"|.",
+    "lv_raw = `a\"b`.",
+    "lv_esc = |a\\|b \"c|.",
+    "",
+  ]);
+});
+
+test("comments: Apex, JavaScript, and CDS lose // and /* */ comments outside strings", () => {
+  const apex = "String s = 'a // b'; // real comment\nString t = 'it\\'s /* not */ a comment';\n/* block\n   comment */Integer i = 1;\nInteger j/*x*/= 2;\n";
+  // A removed block comment leaves one space where it started, so the code after it keeps its
+  // column and ^-anchored patterns still match.
+  assert.equal(stripComments(apex, "Handler.cls"), "String s = 'a // b';\nString t = 'it\\'s /* not */ a comment';\n \nInteger i = 1;\nInteger j = 2;\n");
+  const js = 'const url = "abfss://lake@x/y"; // path\nconst t = `line one\n// still in the template\n`;\n';
+  assert.equal(stripComments(js, "load.mjs"), 'const url = "abfss://lake@x/y";\nconst t = `line one\n// still in the template\n`;\n');
+  const cds = "define view entity ZI_X as select from zt // source\n{ key a, 'x//y' as b /* note */ }\n";
+  assert.equal(stripComments(cds, "src/zi_x.ddls.asddls"), "define view entity ZI_X as select from zt\n{ key a, 'x//y' as b   }\n");
+});
+
+test("comments: Python loses # comments outside strings, including triple-quoted strings", () => {
+  const py = 'color = "#ffffff"  # white\n"""Docstring with a # sign\nover two lines"""\nx = 1 # one\n';
+  assert.equal(stripComments(py, "notebooks/load.py"), 'color = "#ffffff"\n"""Docstring with a # sign\nover two lines"""\nx = 1\n');
+  assert.equal(stripComments("print('a') # b\nprint('c')\n", "t.py").split("\n").length, 3, "line count is kept");
+});
+
+test("comments: other file types are unchanged, and the explanation is never stripped", () => {
+  assert.equal(stripComments("# Heading\n// not code\n", "answer.md"), "# Heading\n// not code\n");
+  assert.equal(stripComments('{"a": "//"}', "x.json"), '{"a": "//"}');
+  const text = joinForPatterns(splitIntoFiles("Run BAPI_TRANSACTION_COMMIT after the call.\n* file: src/zfa_x.prog.abap\n* COMMIT WORK.\nWRITE 'x'.\n"));
+  assert.match(text, /Run BAPI_TRANSACTION_COMMIT after the call\./);
+  assert.doesNotMatch(text, /COMMIT WORK/);
 });
 
 test("patterns: regex entries match as regex, invalid regex falls back to literal", () => {

@@ -147,11 +147,45 @@ test("environment rules: RAP behavior definitions need the release that introduc
   assert.deepEqual(ids.sort(), ["bdef-strict-2", "rap-draft", "rap-managed"]);
   assert.match(checkEnvironmentRules(managedDraft, env("product=s4hana release=2021"))[0].messages.join(" "), /bdef-strict-2/);
   assert.equal(checkEnvironmentRules(managedDraft, env("product=s4hana release=2022")).length, 0);
+  // The optimized addition of the draft action Activate arrived with 7.58 (S/4HANA 2023).
+  const draftActions = (activate) => bdef(`managed implementation in class zbp_r_fa_order unique;\nstrict ( 2 );\nwith draft;\ndefine behavior for ZR_FA_Order alias Order\npersistent table zfa_order\ndraft table zfa_order_d\nlock master total etag LastChangedAt\nauthorization master ( global )\n{\n  create;\n  draft action Edit;\n  ${activate}\n  draft action Discard;\n  draft action Resume;\n  draft determine action Prepare;\n}`);
+  const optimized = draftActions("draft action Activate optimized;");
+  const optimizedOn2022 = checkEnvironmentRules(optimized, env("product=s4hana release=2022"));
+  assert.equal(optimizedOn2022.length, 1);
+  assert.deepEqual(optimizedOn2022[0].messages.map((m) => m.match(/^\[([a-z0-9-]+)\]/)[1]), ["rap-draft-activate-optimized"]);
+  assert.equal(checkEnvironmentRules(optimized, env("product=s4hana release=2023")).length, 0);
+  assert.equal(checkEnvironmentRules(optimized, env("product=btp-abap release=current")).length, 0);
+  assert.equal(checkEnvironmentRules(draftActions("draft action Activate;"), env("product=s4hana release=2022")).length, 0);
+  assert.equal(checkEnvironmentRules(draftActions("// Use draft action Activate optimized; from 2023.\n  draft action Activate;"), env("product=s4hana release=2022")).length, 0);
   const unmanaged = bdef("unmanaged implementation in class zbp_r_fa_order unique;\ndefine behavior for ZR_FA_Order\n{\n  update;\n}");
   assert.equal(checkEnvironmentRules(unmanaged, env("product=s4hana release=1809")).length, 1);
   assert.equal(checkEnvironmentRules(unmanaged, env("product=s4hana release=1909")).length, 0);
   // Comments do not trigger rules.
   assert.equal(checkEnvironmentRules(bdef("// with draft; strict ( 2 );\nunmanaged implementation in class zbp_x unique;"), env("product=s4hana release=1909")).length, 0);
+});
+
+test("environment rules: built-in ipow( ) needs 7.40 SP02 and utclong needs 7.54, which abaplint does not check", () => {
+  const program = (name, body) => [{ path: `src/${name}.prog.abap`, content: `REPORT ${name}.\n${body}\n` }];
+  const ids = (results) => results.flatMap((r) => r.messages.map((m) => m.match(/^\[([a-z0-9-]+)\]/)[1]));
+
+  const ipow = program("zfa_ipow", "DATA lv_result TYPE i.\nSTART-OF-SELECTION.\n  lv_result = ipow( base = 2 exp = 3 ).");
+  assert.deepEqual(ids(checkEnvironmentRules(ipow, env("product=ecc release=ehp6 database=anydb"))), ["ipow-function"]);
+  assert.deepEqual(ids(checkEnvironmentRules(ipow, env("product=ecc release=ehp7 support_package=1 database=anydb"))), ["ipow-function"]);
+  assert.equal(checkEnvironmentRules(ipow, env("product=ecc release=ehp7 support_package=2 database=anydb")).length, 0);
+  // A method of your own named ipow, comments, and literals are not the built-in function.
+  const ipowLookalike = program("zfa_ipow2", "DATA lo_calc TYPE REF TO zcl_fa_calc.\nDATA lv_result TYPE i.\nSTART-OF-SELECTION.\n  lv_result = lo_calc->ipow( 2 ).\n  lv_result = zcl_fa_calc=>ipow( 2 ).\n* lv_result = ipow( base = 2 exp = 3 ).\n  WRITE 'ipow( base = 2 exp = 3 )'. \" ipow( base = 2 exp = 3 )");
+  assert.equal(checkEnvironmentRules(ipowLookalike, env("product=ecc release=ehp6 database=anydb")).length, 0);
+
+  const typeOnly = program("zfa_ts", "DATA lv_created TYPE utclong.");
+  const functionOnly = program("zfa_ts2", "DATA lv_seconds TYPE decfloat34.\nSTART-OF-SELECTION.\n  lv_seconds = utclong_diff( high = utclong_current( ) low = utclong_add( val = utclong_current( ) days = -1 ) ).");
+  for (const files of [typeOnly, functionOnly]) {
+    assert.deepEqual(ids(checkEnvironmentRules(files, env("product=s4hana release=1809"))), ["utclong-type"]);
+    assert.equal(checkEnvironmentRules(files, env("product=s4hana release=1909")).length, 0);
+  }
+  assert.deepEqual(ids(checkEnvironmentRules(typeOnly, env("product=ecc release=ehp8 database=anydb"))), ["utclong-type"]);
+  // Names that only contain the word, structure components, comments, and literals do not count.
+  const utclongLookalike = program("zfa_ts3", "DATA lv_utclong TYPE timestampl.\nDATA ls_log TYPE zfa_s_log.\nSTART-OF-SELECTION.\n  GET TIME STAMP FIELD lv_utclong.\n  ls_log-utclong = lv_utclong.\n* DATA lv_created TYPE utclong.\n  WRITE 'utclong'. \" TYPE utclong");
+  assert.equal(checkEnvironmentRules(utclongLookalike, env("product=s4hana release=1809")).length, 0);
 });
 
 test("environment rules: CDS table functions need SAP HANA and 7.50", () => {
