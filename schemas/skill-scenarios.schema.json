@@ -76,10 +76,10 @@
           },
           "negative_responses": {
             "type": "array",
-            "description": "Known-bad answers. Each must fail this scenario, which proves the checks are not trivially satisfied.",
+            "description": "Known-bad answers. Each must fail this scenario on a check of the kind named in caught_by, which proves the checks are not trivially satisfied.",
             "items": {
               "type": "object",
-              "required": ["name", "reason", "response"],
+              "required": ["name", "reason", "caught_by", "response"],
               "additionalProperties": false,
               "properties": {
                 "name": { "type": "string", "pattern": "^[a-z0-9]+(_[a-z0-9]+)*$" },

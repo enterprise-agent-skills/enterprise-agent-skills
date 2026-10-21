@@ -213,9 +213,15 @@ feature_rules:
     pattern: '^\s*strict\s*\(\s*2\s*\)\s*;'
     min_sap_basis: "7.57"
     source: ABAP Keyword Documentation, RAP BDL in Release 7.57 (strict mode version 2)
+  - id: rap-draft-activate-optimized
+    description: Addition optimized of the draft action Activate
+    extensions: [.asbdef]
+    pattern: '\bActivate\s+optimized\b'
+    min_sap_basis: "7.58"
+    source: ABAP Keyword Documentation, RAP BDL in Release 7.58 (Draft Action Activate Optimized)
 
-  # Statements that abaplint's grammar accepts on releases older than SAP supports them. Each
-  # rule is exercised by config/abap-language-features.yaml through
+  # Statements, built-in types, and built-in functions that abaplint accepts on releases older
+  # than SAP supports them. Each rule is exercised by config/abap-language-features.yaml through
   # tests/unit/abap-release-features.test.mjs. Patterns run on code with comments and literal
   # contents removed.
   - id: abap-unit-test-properties
@@ -286,6 +292,13 @@ feature_rules:
     min_sap_basis: "7.40"
     min_support_package: 2
     source: ABAP Keyword Documentation, ABAP Channels in Release 7.40 SP02 (new variants of WAIT UNTIL)
+  - id: ipow-function
+    description: Built-in integer power function ipow( )
+    extensions: [.abap]
+    pattern: '(?<![-=]>|~)\bipow\(\s'
+    min_sap_basis: "7.40"
+    min_support_package: 2
+    source: ABAP Keyword Documentation, Expressions in Release 7.40 SP02 (new predefined function ipow)
   - id: let-expressions
     description: LET expressions in constructor expressions
     extensions: [.abap]
@@ -341,3 +354,9 @@ feature_rules:
     pattern: '@\('
     min_sap_basis: "7.50"
     source: ABAP Keyword Documentation, Changes in Release 7.50 (host expressions)
+  - id: utclong-type
+    description: Built-in time stamp type utclong and its functions utclong_current( ), utclong_add( ), and utclong_diff( )
+    extensions: [.abap]
+    pattern: '(?<![-=]>|[-~])\butclong(?:_current|_add|_diff)?\b'
+    min_sap_basis: "7.54"
+    source: ABAP Keyword Documentation, Data Types in Release 7.54 (built-in time stamp type utclong) and Time Stamp Functions (7.54)

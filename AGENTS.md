@@ -37,6 +37,7 @@ Run `npm run build` after editing any `plugin.yaml`, `SKILL.md`, `scenarios.yaml
   example is caught by a forbidden pattern, and each scenario has at least one negative
   response with `caught_by` set.
 - Do not weaken a test to make it pass. Fix the skill or the reference answer instead.
-- Do not add dependencies, network calls in required checks, or anything that needs model
-  credentials in required CI.
+- Do not add dependencies, network calls in required checks other than `npm ci` and the
+  Vally CLI download in `npm run eval:vally`, or anything that needs model credentials in
+  required CI.
 - Do not put credentials, tokens, or real customer data anywhere in the repository.

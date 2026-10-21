@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: Report a security vulnerability
-    url: https://docs.github.com/code-security/security-advisories/guidance-on-reporting-and-writing-information-about-vulnerabilities/privately-reporting-a-security-vulnerability
-    about: Use private vulnerability reporting on the repository Security tab. Do not open a public issue.
+    url: https://github.com/enterprise-agent-skills/enterprise-agent-skills/security/advisories/new
+    about: Report it privately with GitHub private vulnerability reporting. Do not open a public issue.
   - name: Questions and ideas
-    url: https://docs.github.com/discussions
-    about: Use GitHub Discussions in this repository for questions and open-ended ideas.
+    url: https://github.com/enterprise-agent-skills/enterprise-agent-skills/discussions
+    about: Ask questions and share open-ended ideas in GitHub Discussions for this repository.

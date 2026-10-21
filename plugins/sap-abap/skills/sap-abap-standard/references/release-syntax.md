@@ -71,6 +71,7 @@ release news, an example, and what to write on older releases.
 | 7.40 SP02 | Predicate function line_exists( ) | `IF line_exists( lt_orders[ vbeln = lv_vbeln ] ).` | READ TABLE ... TRANSPORTING NO FIELDS, then check sy-subrc | abaplint; accepted from 7.40 SP08 only |
 | 7.40 SP02 | Empty primary table key WITH EMPTY KEY | `TYPES ty_numbers TYPE STANDARD TABLE OF i WITH EMPTY KEY.` | WITH DEFAULT KEY, or an explicit key | abaplint |
 | 7.40 SP02 | WAIT FOR ASYNCHRONOUS TASKS for asynchronous RFC callbacks | `WAIT FOR ASYNCHRONOUS TASKS UNTIL gv_done = abap_true UP TO 30 SECONDS.` | WAIT UNTIL gv_done = abap_true UP TO 30 SECONDS. | rule `wait-for-asynchronous-tasks` |
+| 7.40 SP02 | Integer power function ipow( ) | `lv_result = ipow( base = lv_base exp = 3 ).` | The ** operator, for example lv_result = lv_base ** 3. | rule `ipow-function` |
 | 7.40 SP05 | ABAP SQL with comma-separated lists and @ host variables | `SELECT vbeln, erdat FROM vbak INTO TABLE @lt_orders WHERE vkorg = @p_vkorg.` | SELECT vbeln erdat FROM vbak INTO TABLE lt_orders WHERE vkorg = p_vkorg. | abaplint |
 | 7.40 SP05 | CORRESPONDING constructor operator | `ls_target = CORRESPONDING #( ls_source ).` | MOVE-CORRESPONDING ls_source TO ls_target. | abaplint |
 | 7.40 SP05 | LET expressions in constructor expressions | `lv_text = COND #( LET n = lines( lt_items ) IN WHEN n > 0 THEN ... ).` | A helper variable assigned before the expression | rule `let-expressions` |
@@ -97,6 +98,7 @@ release news, an example, and what to write on older releases.
 | 7.51 | OFFSET in ABAP SQL | `ORDER BY vbeln INTO TABLE @lt_page UP TO 50 ROWS OFFSET 100` | Read UP TO offset plus page size rows and delete the leading rows, or use a cursor | abaplint |
 | 7.52 | Internal table as data source, SELECT ... FROM @itab | `SELECT kunnr, SUM( netwr ) AS netwr FROM @lt_orders AS o GROUP BY kunnr INTO TABLE @lt_totals.` | Process the internal table with LOOP, SORT, or COLLECT | abaplint |
 | 7.54 | Calculation assignments +=, -=, *=, /= | `lv_total += ls_item-netwr.` | lv_total = lv_total + ls_item-netwr. | abaplint |
+| 7.54 | Built-in time stamp type utclong and utclong_current( ) | `DATA lv_created TYPE utclong.  lv_created = utclong_current( ).` | Packed time stamps of type TIMESTAMPL with GET TIME STAMP FIELD | rule `utclong-type` |
 | 7.55 | CDS view entity (DEFINE VIEW ENTITY) | `define view entity ZFA_I_Order as select from vbak { ... }` | DDIC-based CDS view with @AbapCatalog.sqlViewName | rule `cds-view-entity` |
 | 7.57 | Immutable inline declarations FINAL( ) | `FINAL(lv_limit) = 100.` | DATA( ) inline declaration, or CONSTANTS | abaplint |
 | 7.57 | STEP addition for LOOP AT | `LOOP AT lt_items INTO ls_item STEP -1.` | WHILE loop with READ TABLE ... INDEX | abaplint |
@@ -130,7 +132,7 @@ release news, an example, and what to write on older releases.
 | ABAP Unit test classes | 7.00 | `RISK LEVEL` and `DURATION` additions and `CL_ABAP_UNIT_ASSERT` from 7.02 |
 | Runtime analysis SAT | 7.02 | Replaces SE30 |
 | ABAP Test Cockpit (ATC) | 7.02 SP12 | Code Inspector (SCI) and the extended program check (SLIN) exist on all releases |
-| ABAP Development Tools (Eclipse; VS Code since 2026) | 7.31 SP04 | On 7.00 to 7.02 use SAP GUI (SE80, SE38, SE24, SE37, SE11). Some ADT editors need later releases, for example DDIC objects 7.40 SP02 |
+| ABAP Development Tools for Eclipse (VS Code tools since Q2 2026, ABAP Cloud first: SAP BTP, S/4HANA Cloud, S/4HANA 2025 and later) | 7.31 SP04 | On 7.00 to 7.02 use SAP GUI (SE80, SE38, SE24, SE37, SE11). Some ADT editors need later releases, for example DDIC objects 7.40 SP02. The VS Code scope follows SAP's tutorial prerequisites, checked on 2026-10-18 |
 | `INTERFACES ... PARTIALLY IMPLEMENTED` in test classes | 7.40 SP02 | Simplifies hand-written test doubles |
 | ABAP CDS views (DDIC-based) | 7.40 SP05 | Any database; `@AbapCatalog.sqlViewName` required; edited only in ADT |
 | AMDP | 7.40 SP05 | SAP HANA only; edited only in ADT |

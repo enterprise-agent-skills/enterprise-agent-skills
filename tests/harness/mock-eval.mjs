@@ -1,7 +1,7 @@
 import { evaluateResponse } from "./evaluate.mjs";
 import { parseCriteria } from "./criteria.mjs";
 import { compilePattern, trivialPatterns } from "./patterns.mjs";
-import { splitIntoFiles } from "./files.mjs";
+import { joinForPatterns, splitIntoFiles } from "./files.mjs";
 import { runValidators } from "./validators.mjs";
 import { parseEnvString, resolveEnvironment } from "./sap-env.mjs";
 
@@ -11,11 +11,15 @@ import { parseEnvString, resolveEnvironment } from "./sap-env.mjs";
  *
  *  1. Reference answers pass every expected/forbidden pattern and every language validator,
  *     under the SAP environment the scenario declares (for ABAP).
- *  2. The checks are not trivial: an empty answer fails, and each documented bad answer fails
- *     for the reason named in `caught_by`.
+ *  2. The checks are not trivial: an empty answer fails, every scenario of a skill that is not
+ *     experimental has a documented bad answer, and each one fails for the reason named in
+ *     `caught_by`.
  *  3. Acceptance criteria and tests agree: every "Incorrect" example is caught by a forbidden
  *     pattern or fails a validator under its environment (or carries a documented exemption),
  *     and every complete "Correct" example passes the validators.
+ *
+ * A forbidden pattern that no bad answer and no Incorrect example triggers is reported as a
+ * warning: nothing would notice if an edit broke it.
  */
 export async function evaluateSkill({ skill, maturity, scenarioEntry, strictValidators }) {
   const result = { skill, maturity, passed: true, errors: [], warnings: [], scenarios: [], criteria: null };
@@ -36,7 +40,7 @@ export async function evaluateSkill({ skill, maturity, scenarioEntry, strictVali
   for (const scenario of scenarios) {
     const checks = [];
     const ref = await evaluateResponse(scenario, { text: scenario.mock_response }, opts);
-    checks.push({ id: "reference", label: "Reference answer passes", passed: ref.passed, details: ref.failures, validators: summarizeValidators(ref) });
+    checks.push({ id: "reference", label: "Reference answer passes", passed: ref.passed, details: ref.failures, validators: summarizeValidators(ref), unvalidated: ref.unvalidated });
     result.warnings.push(...ref.warnings.map((w) => `${scenario.name}: ${w}`));
 
     const trivial = trivialPatterns(scenario.expected_patterns);
@@ -66,6 +70,10 @@ export async function evaluateSkill({ skill, maturity, scenarioEntry, strictVali
         details,
       });
     }
+    // AGENTS.md: each scenario needs at least one negative response with caught_by.
+    if (maturity !== "experimental" && !(scenario.negative_responses ?? []).some((n) => n.caught_by)) {
+      checks.push({ id: "negative-present", label: "Scenario has a negative response with caught_by", passed: false, details: ["Add a negative_responses entry with caught_by (AGENTS.md)."] });
+    }
 
     const scenarioPassed = checks.every((c) => c.passed);
     if (!scenarioPassed) result.passed = false;
@@ -74,6 +82,18 @@ export async function evaluateSkill({ skill, maturity, scenarioEntry, strictVali
 
   if (negativeCount === 0 && maturity !== "experimental") {
     fail("At least one scenario needs negative_responses (known-bad answers that must fail).");
+  }
+
+  // Patterns are matched against the same text the grader sees: explanation plus code without
+  // comments, so a pattern does not count as triggered because a comment names the mistake.
+  // Reported as warnings for now; see docs/testing.md.
+  const incorrectTexts = parseCriteria(scenarioEntry?.criteriaText ?? "").incorrect.map((b) => patternText(b.code));
+  for (const scenario of scenarios) {
+    const bad = [...(scenario.negative_responses ?? []).map((n) => patternText(n.response)), ...incorrectTexts];
+    for (const source of scenario.forbidden_patterns ?? []) {
+      const p = compilePattern(source);
+      if (!bad.some((t) => p.test(t))) result.warnings.push(`${scenario.name}: forbidden pattern '${source}' is never triggered by a negative response or an Incorrect example.`);
+    }
   }
 
   result.criteria = await checkCriteria(scenarioEntry?.criteriaText, scenarios, defaultEnvironment);
@@ -105,7 +125,9 @@ async function checkCriteria(text, scenarios, defaultEnvironment) {
 
   const forbidden = scenarios.flatMap((s) => s.forbidden_patterns ?? []).map(compilePattern);
   for (const b of parsed.incorrect) {
-    if (forbidden.some((p) => p.test(b.code))) {
+    // Same text as a graded answer: code in marked files is matched without its comments.
+    const text = patternText(b.code);
+    if (forbidden.some((p) => p.test(text))) {
       out.detected++;
       continue;
     }
@@ -158,6 +180,15 @@ async function checkCriteria(text, scenarios, defaultEnvironment) {
     }
   }
   return out;
+}
+
+/** Pattern text of an answer or example, as evaluateResponse builds it. */
+function patternText(text) {
+  try {
+    return joinForPatterns(splitIntoFiles(text));
+  } catch {
+    return String(text ?? "");
+  }
 }
 
 function safeSplit(code, out, block) {

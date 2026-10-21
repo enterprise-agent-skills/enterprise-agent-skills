@@ -39,11 +39,11 @@ remains allowed alongside it.
 <!-- BEGIN GENERATED: sap-skills (edit with npm run build) -->
 | Skill | SAP systems | ABAP model | Minimum SAP_BASIS | Where SAP runs |
 | --- | --- | --- | --- | --- |
+| [sap-abap-standard](../plugins/sap-abap/skills/sap-abap-standard/SKILL.md) | SAP ECC 6.0, SAP NetWeaver AS ABAP, SAP S/4HANA (on-premise), SAP S/4HANA Cloud Private Edition | Standard ABAP | 7.00 | On premises (customer data center); Microsoft Azure virtual machines (customer-managed); AWS EC2 (customer-managed); Google Compute Engine (customer-managed); SAP-managed private cloud (RISE with SAP; S/4HANA Cloud Private Edition or SAP ERP private edition) |
 | [sap-abap-enhancements](../plugins/sap-abap/skills/sap-abap-enhancements/SKILL.md) | SAP ECC 6.0, SAP NetWeaver AS ABAP, SAP S/4HANA (on-premise), SAP S/4HANA Cloud Private Edition | Standard ABAP | 7.00 | On premises (customer data center); Microsoft Azure virtual machines (customer-managed); AWS EC2 (customer-managed); Google Compute Engine (customer-managed); SAP-managed private cloud (RISE with SAP; S/4HANA Cloud Private Edition or SAP ERP private edition) |
 | [sap-abap-integration](../plugins/sap-abap/skills/sap-abap-integration/SKILL.md) | SAP ECC 6.0, SAP NetWeaver AS ABAP, SAP S/4HANA (on-premise), SAP S/4HANA Cloud Private Edition | Standard ABAP | 7.00 | On premises (customer data center); Microsoft Azure virtual machines (customer-managed); AWS EC2 (customer-managed); Google Compute Engine (customer-managed); SAP-managed private cloud (RISE with SAP; S/4HANA Cloud Private Edition or SAP ERP private edition) |
-| [sap-abap-standard](../plugins/sap-abap/skills/sap-abap-standard/SKILL.md) | SAP ECC 6.0, SAP NetWeaver AS ABAP, SAP S/4HANA (on-premise), SAP S/4HANA Cloud Private Edition | Standard ABAP | 7.00 | On premises (customer data center); Microsoft Azure virtual machines (customer-managed); AWS EC2 (customer-managed); Google Compute Engine (customer-managed); SAP-managed private cloud (RISE with SAP; S/4HANA Cloud Private Edition or SAP ERP private edition) |
-| [sap-clean-core-check](../plugins/sap-abap/skills/sap-clean-core-check/SKILL.md) | SAP ECC 6.0, SAP NetWeaver AS ABAP, SAP S/4HANA (on-premise), SAP S/4HANA Cloud Private Edition, SAP S/4HANA Cloud Public Edition, SAP BTP ABAP environment | Standard ABAP, ABAP Cloud | 7.00 | On premises (customer data center); Microsoft Azure virtual machines (customer-managed); AWS EC2 (customer-managed); Google Compute Engine (customer-managed); SAP-managed private cloud (RISE with SAP; S/4HANA Cloud Private Edition or SAP ERP private edition); SAP-managed public cloud (S/4HANA Cloud Public Edition, SAP BTP ABAP environment) |
 | [sap-rap-business-object](../plugins/sap-abap/skills/sap-rap-business-object/SKILL.md) | SAP S/4HANA (on-premise), SAP S/4HANA Cloud Private Edition, SAP S/4HANA Cloud Public Edition, SAP BTP ABAP environment | ABAP Cloud | 7.57 | On premises (customer data center); Microsoft Azure virtual machines (customer-managed); AWS EC2 (customer-managed); Google Compute Engine (customer-managed); SAP-managed private cloud (RISE with SAP; S/4HANA Cloud Private Edition or SAP ERP private edition); SAP-managed public cloud (S/4HANA Cloud Public Edition, SAP BTP ABAP environment) |
+| [sap-clean-core-check](../plugins/sap-abap/skills/sap-clean-core-check/SKILL.md) | SAP ECC 6.0, SAP NetWeaver AS ABAP, SAP S/4HANA (on-premise), SAP S/4HANA Cloud Private Edition, SAP S/4HANA Cloud Public Edition, SAP BTP ABAP environment | Standard ABAP, ABAP Cloud | 7.00 | On premises (customer data center); Microsoft Azure virtual machines (customer-managed); AWS EC2 (customer-managed); Google Compute Engine (customer-managed); SAP-managed private cloud (RISE with SAP; S/4HANA Cloud Private Edition or SAP ERP private edition); SAP-managed public cloud (S/4HANA Cloud Public Edition, SAP BTP ABAP environment) |
 <!-- END GENERATED: sap-skills -->
 
 In short:
@@ -53,7 +53,8 @@ In short:
 - ABAP Cloud and RAP on S/4HANA 2022 or later, Private Edition, Public Edition, or the BTP ABAP
   environment: [sap-rap-business-object](../plugins/sap-abap/skills/sap-rap-business-object/SKILL.md).
   RAP also exists in Standard ABAP from S/4HANA 1909 (unmanaged) and 2020 (managed with
-  draft); the feature rules below catch BDEF syntax that is too new for the target.
+  draft), but this plugin does not cover RAP on S/4HANA 1909 to 2021. The feature rules below
+  catch behavior definition syntax that is too new for the target.
 - Checking classic code against released APIs before an upgrade or a move to ABAP Cloud:
   [sap-clean-core-check](../plugins/sap-abap/skills/sap-clean-core-check/SKILL.md).
 
@@ -201,6 +202,7 @@ S/4HANA 2021.
 | `rap-draft` | RAP draft handling (with draft) | SAP_BASIS 7.55 or later | ABAP Keyword Documentation, RAP BDL in Release 7.55 (with draft) |
 | `bdef-strict` | Behavior definition strict mode (strict;) | SAP_BASIS 7.56 or later | ABAP Keyword Documentation, RAP BDL in Release 7.56 (strict mode) |
 | `bdef-strict-2` | Behavior definition strict mode version 2 (strict ( 2 );) | SAP_BASIS 7.57 or later | ABAP Keyword Documentation, RAP BDL in Release 7.57 (strict mode version 2) |
+| `rap-draft-activate-optimized` | Addition optimized of the draft action Activate | SAP_BASIS 7.58 or later | ABAP Keyword Documentation, RAP BDL in Release 7.58 (Draft Action Activate Optimized) |
 | `abap-unit-test-properties` | RISK LEVEL and DURATION additions of CLASS ... FOR TESTING | SAP_BASIS 7.02 or later | ABAP Keyword Documentation, Tools in Release 7.0 EhP2 (ABAP Unit; 7.0 uses "#AU pseudo comments) |
 | `abap-unit-assert-class` | Class CL_ABAP_UNIT_ASSERT | SAP_BASIS 7.02 or later | ABAP Keyword Documentation, Tools in Release 7.0 EhP2 (CL_ABAP_UNIT_ASSERT replaces CL_AUNIT_ASSERT) |
 | `string-concat-operator` | Concatenation operator && | SAP_BASIS 7.02 or later | ABAP Keyword Documentation, Changes in Release 7.02 (string expressions) |
@@ -212,6 +214,7 @@ S/4HANA 2021.
 | `inline-declarations` | Inline declarations DATA( ) and FIELD-SYMBOL( ); also checks function modules, which abaplint cannot syntax-check without the function group XML | SAP_BASIS 7.40 SP02 or later | ABAP Keyword Documentation, Expressions and Functions in Release 7.40 SP02 (inline declarations) |
 | `final-inline-declarations` | Immutable inline declarations FINAL( ) | SAP_BASIS 7.57 or later | ABAP Keyword Documentation, Expressions and Functions in Release 7.57 (FINAL declaration operator) |
 | `wait-for-asynchronous-tasks` | WAIT FOR ASYNCHRONOUS TASKS (replaces WAIT UNTIL for aRFC callbacks) | SAP_BASIS 7.40 SP02 or later | ABAP Keyword Documentation, ABAP Channels in Release 7.40 SP02 (new variants of WAIT UNTIL) |
+| `ipow-function` | Built-in integer power function ipow( ) | SAP_BASIS 7.40 SP02 or later | ABAP Keyword Documentation, Expressions in Release 7.40 SP02 (new predefined function ipow) |
 | `let-expressions` | LET expressions in constructor expressions | SAP_BASIS 7.40 SP05 or later | ABAP Keyword Documentation, Expressions in Release 7.40 SP05 (LET expressions) |
 | `conditional-iterations` | Conditional iterations FOR ... UNTIL and FOR ... WHILE | SAP_BASIS 7.40 SP08 or later | ABAP Keyword Documentation, Expressions in Release 7.40 SP08 (iteration expressions) |
 | `sql-inline-declarations` | Inline declarations in ABAP SQL, INTO @DATA( ) | SAP_BASIS 7.40 SP08 or later | ABAP Keyword Documentation, ABAP SQL in Release 7.40 SP08 (inline declarations for the target area of SELECT) |
@@ -220,6 +223,7 @@ S/4HANA 2021.
 | `value-lines-of` | LINES OF inside VALUE and NEW | SAP_BASIS 7.40 SP08 or later | ABAP Keyword Documentation, Expressions in Release 7.40 SP08 (inserting table lines in constructed tables) |
 | `base-addition` | BASE addition in VALUE, NEW, and CORRESPONDING | SAP_BASIS 7.40 SP08 or later | ABAP Keyword Documentation, Changes in Release 7.40 SP08 (BASE for constructor expressions) |
 | `sql-host-expressions` | Host expressions @( ... ) in ABAP SQL | SAP_BASIS 7.50 or later | ABAP Keyword Documentation, Changes in Release 7.50 (host expressions) |
+| `utclong-type` | Built-in time stamp type utclong and its functions utclong_current( ), utclong_add( ), and utclong_diff( ) | SAP_BASIS 7.54 or later | ABAP Keyword Documentation, Data Types in Release 7.54 (built-in time stamp type utclong) and Time Stamp Functions (7.54) |
 <!-- END GENERATED: sap-feature-rules -->
 
 A failure from abaplint counts as `validator`; a failure from a feature rule counts as
@@ -231,11 +235,14 @@ so a known-bad answer must fail for the right reason.
 [config/abap-language-features.yaml](../config/abap-language-features.yaml) lists ABAP
 features with the release that introduced them, a program that uses the feature, and the
 equivalent without it. [tests/unit/abap-release-features.test.mjs](../tests/unit/abap-release-features.test.mjs)
-checks, for every feature, that the program fails on the release before and passes from that
-release up to S/4HANA 2025, and that the equivalent compiles on the older release. A
-classic program full of look-alikes (`FOR ALL ENTRIES`, `OPEN DATASET ... FOR INPUT`, comments
-and literals with newer syntax) must pass on 7.00, which guards the feature rules against
-false positives. The same manifest generates the table in
+checks, for every feature, that the program fails on the release before, passes on the release
+that introduced it and on S/4HANA 2025, and that the equivalent compiles on the older release
+and on S/4HANA 2025. Where the offline check accepts a feature later than SAP does, the
+registry sets `validator_from`, and the program must pass from that release and fail on the
+one before it; today this applies only to `line_exists( )` (SAP: 7.40 SP02, offline check:
+7.40 SP08). A classic program full of look-alikes (`FOR ALL ENTRIES`,
+`OPEN DATASET ... FOR INPUT`, comments and literals with newer syntax) must pass on 7.00, which
+guards the feature rules against false positives. The same manifest generates the table in
 [release-syntax.md](../plugins/sap-abap/skills/sap-abap-standard/references/release-syntax.md),
 so the skill and the tests cannot drift apart.
 
@@ -253,6 +260,12 @@ so the skill and the tests cannot drift apart.
   when abaplint changes.
 - Feature rules are regular expressions. They are tested against classic code, but unusual
   formatting can slip through.
+- abaplint checks the release of only some built-in functions, for example `xsdbool( )`.
+  Feature rules in the table above cover others, for example the string functions, `ipow( )`,
+  and the type `utclong`. Built-in types and functions without a rule or a grammar check pass
+  on releases that do not have them.
+- Behavior definitions have no parser. Only the RAP rules in the table above are checked;
+  other behavior definition syntax passes on any release.
 
 ## Optional backend checks (not implemented)
 

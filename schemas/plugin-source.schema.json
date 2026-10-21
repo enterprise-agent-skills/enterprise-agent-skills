@@ -34,6 +34,12 @@
       "items": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" }
     },
     "maturity": { "type": "string" },
+    "skill_order": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+      "description": "Optional display order of the plugin's skills in the README, catalog, and plugin README. Skills not listed follow alphabetically."
+    },
     "author": {
       "type": "object",
       "required": ["name"],

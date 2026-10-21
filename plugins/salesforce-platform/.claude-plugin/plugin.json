@@ -1,14 +1,14 @@
 {
   "name": "salesforce-platform",
-  "displayName": "Salesforce Platform Development",
+  "displayName": "Apex development skills for Salesforce",
   "version": "0.1.0",
   "description": "Skills for Salesforce Platform development with Apex: bulk-safe trigger handlers, recursion control, user-mode data access, and tests that cover full 200-record trigger batches.",
   "author": {
-    "name": "Frontier Agent Skills and Plugins contributors",
-    "url": "https://github.com/frontier-agent-skills/frontier-agent-skills-plugins"
+    "name": "Enterprise Agent Skills contributors",
+    "url": "https://github.com/enterprise-agent-skills/enterprise-agent-skills"
   },
-  "homepage": "https://github.com/frontier-agent-skills/frontier-agent-skills-plugins/tree/main/plugins/salesforce-platform",
-  "repository": "https://github.com/frontier-agent-skills/frontier-agent-skills-plugins",
+  "homepage": "https://github.com/enterprise-agent-skills/enterprise-agent-skills/tree/main/plugins/salesforce-platform",
+  "repository": "https://github.com/enterprise-agent-skills/enterprise-agent-skills",
   "license": "MIT",
   "keywords": [
     "salesforce",

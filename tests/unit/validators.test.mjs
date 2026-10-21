@@ -52,6 +52,19 @@ test("python: accepts valid code and rejects a syntax error", { skip: !findPytho
   assert.equal(bad.status, "failed");
 });
 
+test("python: non-ASCII source is read as UTF-8 on every platform", { skip: !findPython() && !inCI ? "no Python 3 on PATH" : false }, async () => {
+  // On Windows, sys.stdin.read() decodes with the console code page, so these failed there.
+  // U+2010 is a Unicode hyphen, which Python does not accept as an operator.
+  const [aAcute, hyphen, oUmlaut, sharpS] = [0xc1, 0x2010, 0xf6, 0xdf].map((cp) => String.fromCodePoint(cp));
+  const ok = await single("names.py", `name = "${aAcute}lvaro"\nnote = "re${hyphen}run"\ngr${oUmlaut}${sharpS}e = 1\n`);
+  assert.equal(ok.status, "passed", ok.messages.join("; "));
+  // A syntax error that involves a non-ASCII character is reported, not a crash.
+  const bad = await single("hyphen.py", `x = re${hyphen}run\n`);
+  assert.equal(bad.status, "failed");
+  assert.match(bad.messages[0], /^1:\d+ invalid character/);
+  assert.doesNotMatch(bad.messages[0], /Traceback|UnicodeEncodeError/);
+});
+
 test("javascript, json, yaml: reject invalid documents", async () => {
   assert.equal((await single("ok.mjs", "export const a = 1;\n")).status, "passed");
   assert.equal((await single("bad.mjs", "export const = 1;\n")).status, "failed");

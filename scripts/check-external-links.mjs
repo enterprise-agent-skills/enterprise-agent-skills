@@ -19,7 +19,7 @@ const CONCURRENCY = 8;
 async function probe(url) {
   for (const method of ["HEAD", "GET"]) {
     try {
-      const res = await fetch(url, { method, redirect: "follow", signal: AbortSignal.timeout(TIMEOUT_MS), headers: { "user-agent": "frontier-agent-skills-link-check" } });
+      const res = await fetch(url, { method, redirect: "follow", signal: AbortSignal.timeout(TIMEOUT_MS), headers: { "user-agent": "enterprise-agent-skills-link-check" } });
       if (res.ok) return { status: res.status, ok: true };
       if (method === "GET" || ![403, 405, 501].includes(res.status)) return { status: res.status, ok: false };
     } catch (err) {

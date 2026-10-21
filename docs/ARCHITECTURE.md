@@ -29,19 +29,26 @@ all plugins                  --->  .claude-plugin/marketplace.json              
                                    .agents/plugins/marketplace.json             Codex
                                    catalog/catalog.json                         Tools, future website
 tests/scenarios/<s>/scenarios.yaml ---> tests/scenarios/<s>/vally/eval.yaml     Vally (offline oracle now, live later)
+plugin and skill folders     --->  dist/ (npm run package, not committed)       GitHub release assets for each v* tag
 ```
 
 `npm run build:check` fails CI when any generated file differs from what the sources produce,
-so generated files never drift.
+so generated files never drift. Release packages are the exception: they are built from the
+tagged commit and attached to the GitHub release, never committed (see
+[Packaging and releases](#packaging-and-releases)).
 
 ## Why skills live inside plugin folders
 
 Plugin installers copy a plugin folder into a cache, and the Agent Plugins format discovers
 skills only in `skills/` directly under the plugin root. Skills must therefore be physically
 inside their plugin. This also matches microsoft/skills (`.github/plugins/<plugin>/skills/`).
-The `npx skills` installer finds them through `metadata.pluginRoot` and `plugins[].skills` in
-`.claude-plugin/marketplace.json`. Each skill belongs to exactly one plugin and skill names
-are unique across the repository, because Copilot and `npx skills` deduplicate by name.
+The `npx skills` installer also reads the skill paths declared in
+`.claude-plugin/marketplace.json`. Its documentation (checked 2026-10-21) says that it searches
+the repository recursively when its standard locations hold no skill, and that `--full-depth`
+also finds `SKILL.md` files outside those locations. A `SKILL.md` elsewhere in the repository
+can therefore appear in its skill list, which is one reason legacy drafts are kept out of the
+repository. Each skill belongs to exactly one plugin and skill names are unique across the
+repository, because Copilot and `npx skills` deduplicate by name.
 
 ## Why a separate plugin.yaml
 
@@ -79,8 +86,8 @@ Details are in [testing.md](testing.md).
 
 SAP customers run many releases at once: ECC 6.0 on SAP_BASIS 7.00 to 7.50, S/4HANA 1511 to
 2025 on 7.50 to 8.16, on premises, on IaaS, or in SAP's private cloud. ABAP that compiles on
-one release fails on an older one, so every ABAP sample and test answer is validated against a
-named target.
+one release fails on an older one, so ABAP and CDS samples that start with a file marker, in
+skills and in test answers, are validated against a named target.
 
 ```text
 config/sap-environments.yaml        products, releases -> SAP_BASIS, abaplint grammar per
@@ -107,6 +114,32 @@ come only from `mcp/servers.yaml`, must be vendor-published and version-pinned, 
 bundled only when they need no credentials. Bundled scripts are listed for human review.
 Workflows use read-only tokens unless a job needs more, and actions are pinned to commit SHAs.
 
+## Packaging and releases
+
+`scripts/package.mjs` turns the plugin folders into downloadable ZIP files: one per skill
+(`<skill>.zip`), one per plugin (`plugin-<plugin>.zip`), and `all-skills.zip`. A skill or plugin
+ZIP holds one top-level folder named after it; `all-skills.zip` holds every skill folder at the
+top level. Every skill or plugin folder in an archive gets `LICENSE.txt`, a copy of the
+repository license: the MIT License asks for its notice in every copy, and installs copy only
+that folder. The script also writes `SHA256SUMS.txt` and `RELEASE_NOTES.md`. The ZIP writer
+(`scripts/lib/zip.mjs`) sorts entries and fixes timestamps and permissions, so the same files
+give the same bytes with the same Node.js version. Locally, `npm run package` writes to
+`dist/`, which Git ignores.
+
+Pushing a tag that starts with `v` runs `.github/workflows/release.yml`, which stops unless the
+tag points at a commit on `main`. Its two jobs keep the token that can write away from
+repository and dependency code:
+
+```text
+build    read-only token   npm ci --ignore-scripts, npm run check, npm run package; tests
+                           every ZIP and the checksums; uploads dist/ as a workflow artifact
+publish  can write         downloads the artifact, attests build provenance of the ZIP files,
+                           creates the GitHub release with RELEASE_NOTES.md as its text
+```
+
+The release assets and how to check a download are listed in
+[publishing.md](publishing.md#releases).
+
 ## Decisions
 
 | Decision | Reason |
@@ -116,7 +149,8 @@ Workflows use read-only tokens unless a job needs more, and actions are pinned t
 | Mock evaluation with negative controls and `caught_by` | A mock-only harness can pass vacuously; negative controls prove each check rejects bad output |
 | Language parsers instead of LLM judges in required CI | Deterministic, free, and they catch real errors |
 | Vally oracle plus `--no-golden-input` baseline | Uses the same graders a live run will use, and proves they are not trivially passing |
-| `incubator/` for legacy drafts | Keeps earlier work without publishing content that does not meet the bar |
+| Legacy drafts are not part of the repository; `incubator/` holds only a README | Earlier drafts are migrated into focused skills with tests before they are published, so nothing below the bar is public and installers that search the repository find only published skills |
+| Release packages built from the tagged commit in a read-only job; the job that publishes runs no repository code | Keeps the write token away from third-party code; checksums and build provenance let users check a download |
 | Explicit SAP target for every ABAP sample, release facts in a tested registry | The same ABAP is right on S/4HANA 2023 and wrong on ECC 6.0 EHP6; release claims must be checkable, not remembered |
 | Vendor-neutral name and no vendor logos | Avoids trademark problems and implied endorsement |
 

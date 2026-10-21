@@ -2,7 +2,7 @@
 
 **Skill**: `plugins/sap-abap/skills/sap-rap-business-object`
 **Product**: SAP ABAP Cloud (RESTful ABAP Programming model)
-**Purpose**: Criteria for judging generated RAP objects. Each "Incorrect" example is rejected by a forbidden pattern in `scenarios.yaml`; each complete "Correct" example is parsed with abaplint.
+**Purpose**: Criteria for judging generated RAP objects. Each "Incorrect" example is rejected by a forbidden pattern in `scenarios.yaml` or by a release rule for its target system; each complete "Correct" example is parsed with abaplint.
 
 ---
 
@@ -46,6 +46,9 @@ define view ZI_Travel as select from zfa_travel
 
 ### 2.1 Correct: managed, strict mode 2, draft, total ETag
 
+For SAP_BASIS 7.58 and later (S/4HANA 2023 and later, SAP BTP ABAP environment, S/4HANA Cloud
+Public Edition). On S/4HANA 2022, write `draft action Activate;` (see 2.3).
+
 ```text
 managed implementation in class zbp_r_travel unique;
 strict ( 2 );
@@ -81,6 +84,39 @@ METHOD set_travel_id.
     ENTITY Travel UPDATE FIELDS ( TravelID ) WITH update_rows.
   COMMIT WORK.
 ENDMETHOD.
+```
+
+### 2.3 Incorrect: draft action Activate optimized on S/4HANA 2022
+
+The `optimized` addition needs SAP_BASIS 7.58 (S/4HANA 2023). On S/4HANA 2022 (7.57) this
+behavior definition does not activate. The release rule `rap-draft-activate-optimized` rejects
+it for this target.
+
+<!-- abap-env: product=s4hana release=2022 language_version=cloud -->
+```text
+// file: src/zr_travel.bdef.asbdef
+managed implementation in class zbp_r_travel unique;
+strict ( 2 );
+with draft;
+
+define behavior for ZR_Travel alias Travel
+persistent table zfa_travel
+draft table zfa_travel_d
+etag master LocalLastChangedAt
+lock master total etag LastChangedAt
+authorization master ( global )
+{
+  create;
+  update;
+  delete;
+  field ( numbering : managed, readonly ) TravelUUID;
+  validation validateDates on save { create; field BeginDate, EndDate; }
+  draft action Edit;
+  draft action Activate optimized;
+  draft action Discard;
+  draft action Resume;
+  draft determine action Prepare { validation validateDates; }
+}
 ```
 
 ---
@@ -181,10 +217,37 @@ define view ZC_TravelPublished as select from zfa_travel
 }
 ```
 
+### 6.3 Incorrect: projection behavior definition without use etag
+
+SAP requires `use etag` for each entity of a projection behavior definition; without it the
+OData service loses optimistic concurrency control. Write `use etag` on the line after
+`define behavior for ZC_Travel alias Travel`, before the opening brace.
+
+```text
+projection;
+strict ( 2 );
+use draft;
+
+define behavior for ZC_Travel alias Travel
+{
+  use create;
+  use update;
+  use delete;
+
+  use action acceptTravel;
+  use action Edit;
+  use action Activate;
+  use action Discard;
+  use action Resume;
+  use action Prepare;
+}
+```
+
 ---
 
 ## 7. Test scenarios checklist
 
 - [ ] Draft-enabled managed business object (data model, behavior definition, behavior pool)
 - [ ] Validation with state messages and field highlighting
-- [ ] UI service: projection, projection behavior, metadata extension, service definition
+- [ ] UI service: projection, projection behavior with `use etag`, metadata extension, service definition
+- [ ] Behavior definition for S/4HANA 2022 without `Activate optimized`

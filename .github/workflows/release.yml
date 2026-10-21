@@ -1,0 +1,120 @@
+name: release
+
+# Builds a ZIP per skill and per plugin and attaches them to a GitHub release. Runs only when
+# a version tag (v*) is pushed, and only for a tag on a commit that is on main.
+#
+# Two jobs keep the write token away from third-party code:
+# - build has a read-only token. It runs npm ci, every check, and the packager, which execute
+#   code from dependencies, and uploads dist/ as a workflow artifact.
+# - publish runs no repository or dependency code. It downloads the packages, attests their
+#   build provenance (Sigstore), and creates the release. Only this job can write.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      VALLY_TELEMETRY_OPTOUT: "1"
+      DO_NOT_TRACK: "1"
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # Full history, so the next step can see whether the tagged commit is on main.
+          fetch-depth: 0
+
+      - name: Tag must point at a commit on main
+        run: |
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "::error::Tag ${GITHUB_REF_NAME} points at $(git rev-parse HEAD), which is not on main. Tag a commit on main."
+            exit 1
+          fi
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      # The release notes and provenance checks name the repository from repo.config.yaml, so a
+      # tag pushed before a rename on GitHub would publish wrong links.
+      - name: Repository matches repo.config.yaml
+        run: |
+          expected=$(node --input-type=module -e "import { parse } from 'yaml'; import { readFileSync } from 'node:fs'; const r = parse(readFileSync('repo.config.yaml', 'utf8')).repository; console.log(r.owner + '/' + r.name);")
+          if [ "${expected,,}" != "${GITHUB_REPOSITORY,,}" ]; then
+            echo "::error::repo.config.yaml names ${expected}, but this workflow runs in ${GITHUB_REPOSITORY}. Rename the repository or fix repository.owner and repository.name before tagging."
+            exit 1
+          fi
+
+      - name: Checks (generated files, validation, security, unit tests, mock evaluation)
+        run: npm run check
+
+      - name: Build packages
+        env:
+          TAG: ${{ github.ref_name }}
+        run: npm run package -- --version "$TAG"
+
+      - name: Test the archives
+        run: |
+          for f in dist/skills/*.zip dist/plugins/*.zip dist/all-skills.zip; do
+            unzip -tq "$f"
+          done
+          (cd dist && find . -name '*.zip' -exec sha256sum {} + | sed 's# \./[a-z]*/# #; s# \./# #' | sort > /tmp/computed.txt)
+          sort dist/SHA256SUMS.txt | diff - /tmp/computed.txt
+
+      - name: Upload the packages
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dist
+          path: dist/
+          retention-days: 7
+          if-no-files-found: error
+
+  publish:
+    name: publish
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - name: Download the packages
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist
+
+      - name: Attest build provenance
+        id: attest
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            dist/skills/*.zip
+            dist/plugins/*.zip
+            dist/all-skills.zip
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          BUNDLE: ${{ steps.attest.outputs.bundle-path }}
+        run: |
+          cp "$BUNDLE" dist/provenance.sigstore.json
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" --notes-file dist/RELEASE_NOTES.md \
+            dist/skills/*.zip dist/plugins/*.zip dist/all-skills.zip dist/SHA256SUMS.txt dist/provenance.sigstore.json

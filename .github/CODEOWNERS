@@ -1,7 +1,7 @@
 # Code owners review pull requests for the paths they own. The last matching rule wins.
 #
 # The project has one maintainer for now. As domain owners join, add a team per vendor area
-# (for example @frontier-agent-skills/sap-owners for /plugins/sap-*/ and /tests/scenarios/sap-*/)
+# (for example @enterprise-agent-skills/sap-owners for /plugins/sap-*/ and /tests/scenarios/sap-*/)
 # and list the people in GOVERNANCE.md.
 
 *                                   @amitlals

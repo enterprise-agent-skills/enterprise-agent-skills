@@ -43,3 +43,7 @@ issue, follow their naming conventions, run their mock harness
 
 Mention the origin in the upstream pull request description. The MIT license allows reuse in
 either direction; keep license notices intact.
+
+Export only content you wrote, or get the agreement of each author first. List the authors
+with `git log --format=%an -- plugins/<plugin>/skills/<skill> tests/scenarios/<skill> | sort -u`.
+Accept the upstream repository's contribution terms only for content you own.

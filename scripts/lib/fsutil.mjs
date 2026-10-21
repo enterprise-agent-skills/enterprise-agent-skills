@@ -40,8 +40,14 @@ export function listDirs(path) {
 
 const DEFAULT_SKIP = new Set([".git", "node_modules", "reports", ".vally-work"]);
 
-/** Recursively list files under `root` (absolute paths), skipping heavy or generated folders. */
-export function walkFiles(root, { skip = DEFAULT_SKIP } = {}) {
+/**
+ * Recursively list files under `root` (absolute paths), skipping heavy or generated folders.
+ *
+ * Symbolic links are left out by default, so callers that read files never follow a link out
+ * of the folder. With `links: true` they are listed too (file and folder links alike, never
+ * followed), for the security scan, which reports them instead of reading them.
+ */
+export function walkFiles(root, { skip = DEFAULT_SKIP, links = false } = {}) {
   const out = [];
   if (!isDir(root)) return out;
   const stack = [root];
@@ -51,10 +57,27 @@ export function walkFiles(root, { skip = DEFAULT_SKIP } = {}) {
       if (skip.has(entry.name)) continue;
       const full = join(dir, entry.name);
       if (entry.isDirectory()) stack.push(full);
-      else if (entry.isFile()) out.push(full);
+      else if (entry.isFile() || (links && entry.isSymbolicLink())) out.push(full);
     }
   }
   return out.sort();
+}
+
+/** Files that Finder and Windows Explorer create in folders. They hold no content. */
+const OS_METADATA_FILES = new Set([".DS_Store", "Thumbs.db", "desktop.ini"]);
+
+/** True for OS folder metadata such as .DS_Store. Accepts a file name or a path. */
+export function isOsMetadata(path) {
+  return OS_METADATA_FILES.has(path.split(/[\\/]/).pop());
+}
+
+/**
+ * True for local files that never belong in a skill or plugin package: OS folder metadata and
+ * Python bytecode caches. Both are git-ignored. Accepts a relative path with either separator.
+ */
+export function isLocalJunk(path) {
+  const parts = path.split(/[\\/]/);
+  return isOsMetadata(path) || parts[parts.length - 1].endsWith(".pyc") || parts.includes("__pycache__");
 }
 
 /**
@@ -76,9 +99,16 @@ export function stableJson(value) {
   return `${JSON.stringify(value, null, 2)}\n`;
 }
 
-/** Text file extensions the scanners read. Binary files are skipped. */
+/**
+ * Text file extensions the security scan reads. Dotfiles are listed by their full name. Under
+ * plugins/, a file with any other extension fails the scan unless it is a PNG, JPEG, GIF, or
+ * ICO image (see classifyScanFile in security-rules.mjs), so add an extension here before a
+ * skill ships that file type. SVG is text and can carry script, so it is scanned.
+ */
 export const TEXT_EXTENSIONS = new Set([
   ".md", ".mdx", ".txt", ".json", ".yaml", ".yml", ".mjs", ".js", ".cjs", ".ts", ".py",
-  ".abap", ".asddls", ".asbdef", ".asddlxs", ".cls", ".trigger", ".sql", ".kql", ".ps1",
-  ".sh", ".toml", ".xml", ".html", ".css", ".csv", ".tmpl", ".gitignore", ".gitattributes", ".editorconfig",
+  ".abap", ".asddls", ".asbdef", ".asddlxs", ".srvdsrv", ".cls", ".trigger", ".sql", ".kql", ".ps1",
+  ".psm1", ".psd1", ".sh", ".bat", ".cmd", ".vbs", ".rb", ".pl", ".java", ".cs", ".go",
+  ".toml", ".xml", ".html", ".css", ".svg", ".csv", ".tmpl",
+  ".gitignore", ".gitattributes", ".editorconfig", ".npmrc",
 ]);

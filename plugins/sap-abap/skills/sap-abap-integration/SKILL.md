@@ -1,18 +1,17 @@
 ---
 name: sap-abap-integration
 description: >-
-  Write and review integration code in Standard ABAP on SAP ECC 6.0, SAP NetWeaver AS ABAP,
-  and SAP S/4HANA, wherever they run: BAPI calls with RETURN checks and caller commit,
-  BAPI-style RFC function modules, synchronous, asynchronous, and background RFC (tRFC, qRFC,
-  bgRFC), IDocs with ALE and EDI, and SAP Gateway OData V2 services built in SEGW, using only
-  syntax and APIs the target release supports. USE FOR: calling or writing BAPIs and RFC
-  function modules, RFC destinations and authorizations, parallel processing with aRFC,
-  moving tRFC or qRFC to bgRFC, IDoc function modules, partner profiles, SEGW DPC_EXT methods
-  with $filter and paging, $batch commit errors, RFC, IDoc, and Gateway monitoring. DO NOT
-  USE FOR: reports, ALV, DDIC, or SQL tuning (use sap-abap-standard), BAdIs or exits (use
-  sap-abap-enhancements), RAP and ABAP Cloud on S/4HANA 2022 or later (use
-  sap-rap-business-object), released-API checks (use sap-clean-core-check), code-based OData
-  V4, or SAP Integration Suite or other BTP services.
+  Write and review integration code in Standard ABAP on SAP ECC 6.0, SAP NetWeaver AS ABAP, and
+  SAP S/4HANA: BAPI calls with RETURN checks and caller commit, BAPI-style RFC function modules,
+  synchronous, asynchronous, and background RFC (tRFC, qRFC, bgRFC), IDocs with ALE and EDI, and
+  SAP Gateway OData V2 services built in SEGW, using only syntax and APIs the target release
+  supports. USE FOR: calling or writing BAPIs and RFC function modules, RFC destinations and
+  authorizations, parallel processing with aRFC, moving tRFC or qRFC to bgRFC, IDoc function
+  modules, partner profiles, SEGW DPC_EXT methods with $filter and paging, $batch commit errors,
+  RFC, IDoc, and Gateway monitoring. DO NOT USE FOR: reports, ALV, DDIC, or SQL tuning (use
+  sap-abap-standard), BAdIs or exits (use sap-abap-enhancements), RAP (use
+  sap-rap-business-object; RAP on S/4HANA 1909 to 2021 is not covered), released-API checks (use
+  sap-clean-core-check), code-based OData V4, or SAP Integration Suite or other BTP services.
 license: MIT
 compatibility: >-
   SAP ECC 6.0 (any enhancement package), SAP NetWeaver AS ABAP 7.0 or later, or SAP S/4HANA
@@ -25,7 +24,6 @@ metadata:
   category: integration
   maturity: beta
   version: "0.1.0"
-  last-verified: "2026-10-15"
   sap-products: "ecc, netweaver, s4hana, s4hana-private-cloud"
   sap-deployments: "on-premise, azure-iaas, aws-iaas, gcp-iaas, sap-private-cloud"
   abap-language-version: "standard"
@@ -293,9 +291,11 @@ values are in [references/idoc-ale-edi.md](references/idoc-ale-edi.md).
 - Register the service in `/IWFND/MAINT_SERVICE`, test in `/IWFND/GW_CLIENT`, and read errors
   in `/IWFND/ERROR_LOG` (hub) and `/IWBEP/ERROR_LOG` (backend); embedded, check both.
 - On S/4HANA, SEGW is still shipped and documented in 2025, but SAP recommends RAP for new
-  custom services (limited in 1909, complete from 2021). sap-rap-business-object covers RAP
-  with ABAP Cloud on S/4HANA 2022 or later only. This plugin covers neither RAP in Standard
-  ABAP (1909 to 2021) nor code-based OData V4; there, and on ECC, keep SEGW OData V2.
+  custom services: queries and unmanaged business objects from 1909, managed with draft from
+  2020, and more features in every release since. sap-rap-business-object covers RAP on S/4HANA
+  2022 or later. On S/4HANA 1909 to 2021, tell the user that SAP recommends RAP and that this
+  plugin does not cover RAP on those releases, and build a SEGW OData V2 service only if the
+  user chooses it. ECC has no RAP; use SEGW OData V2 there. Code-based OData V4 is not covered.
 
 The complete `GET_ENTITYSET` redefinition and the `$batch` rules are in
 [references/gateway-odata-v2.md](references/gateway-odata-v2.md).

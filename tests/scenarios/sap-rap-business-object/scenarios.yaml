@@ -320,6 +320,7 @@ scenarios:
       - '@Metadata\.allowExtensions: true'
       - '^projection;'
       - "use draft;"
+      - "use etag"
       - "use action Edit;"
       - "use action Activate;"
       - "use action Prepare;"
@@ -331,11 +332,14 @@ scenarios:
     forbidden_patterns:
       - '@OData\.publish:\s*true'
       - '@AbapCatalog\.sqlViewName'
+      # A projection entity header followed directly by the brace has no use etag.
+      - '(?i)define\s+behavior\s+for\s+ZC_\w+(\s+alias\s+\w+)?\s*\{'
     tags: [service, projection, fiori-elements]
     validators: [abaplint]
     mock_response: |
       After activating these objects, create service binding ZUI_Travel_O4 with binding type
-      OData V4 - UI and publish it.
+      OData V4 - UI and publish it (on premises or in Private Edition, in transaction
+      /IWFND/V4_ADMIN).
 
       // file: src/zc_travel.ddls.asddls
       @AccessControl.authorizationCheck: #NOT_REQUIRED
@@ -362,6 +366,7 @@ scenarios:
       use draft;
 
       define behavior for ZC_Travel alias Travel
+      use etag
       {
         use create;
         use update;
@@ -413,4 +418,142 @@ scenarios:
           {
             key travel_uuid as TravelUUID,
                 travel_id   as TravelID
+          }
+      - name: projection_without_etag
+        reason: Without use etag in the projection entity, the OData service loses optimistic concurrency control.
+        caught_by: forbidden_pattern
+        response: |
+          // file: src/zc_travel.bdef.asbdef
+          projection;
+          strict ( 2 );
+          use draft;
+
+          define behavior for ZC_Travel alias Travel
+          {
+            use create;
+            use update;
+            use delete;
+
+            use action acceptTravel;
+            use action Edit;
+            use action Activate;
+            use action Discard;
+            use action Resume;
+            use action Prepare;
+          }
+
+  - name: behavior_definition_on_2022
+    description: Behavior definition for S/4HANA 2022, which has strict mode 2 but not Activate optimized.
+    environment:
+      product: s4hana
+      release: "2022"
+      language_version: cloud
+    prompt: |
+      We run SAP S/4HANA 2022 on premises (SAP_BASIS 7.57) and develop in ABAP Cloud. Write
+      the behavior definition for our managed, draft-enabled business object ZR_Travel on the
+      table zfa_travel with the draft table zfa_travel_d. Use strict mode 2, a total ETag, all
+      draft actions, and the validation validateDates in the Prepare action.
+    # Anchored to statement starts, so an explanation that names the statements does not count.
+    expected_patterns:
+      - '^\s*strict\s*\(\s*2\s*\)\s*;'
+      - '^\s*draft\s+action\s+Activate\s*;'
+    forbidden_patterns: []
+    tags: [draft, behavior-definition, release]
+    mock_response: |
+      S/4HANA 2022 (SAP_BASIS 7.57) does not have the optimized addition of the Activate draft
+      action, which needs 7.58 (S/4HANA 2023), so the behavior definition declares Activate
+      without it.
+
+      // file: src/zr_travel.bdef.asbdef
+      managed implementation in class zbp_r_travel unique;
+      strict ( 2 );
+      with draft;
+
+      define behavior for ZR_Travel alias Travel
+      persistent table zfa_travel
+      draft table zfa_travel_d
+      etag master LocalLastChangedAt
+      lock master total etag LastChangedAt
+      authorization master ( global )
+      {
+        create;
+        update;
+        delete;
+
+        field ( numbering : managed, readonly ) TravelUUID;
+        field ( readonly ) TravelID, OverallStatus, LocalCreatedBy, LocalCreatedAt,
+                           LocalLastChangedBy, LocalLastChangedAt, LastChangedAt;
+        field ( mandatory ) CustomerID, BeginDate, EndDate;
+
+        validation validateDates on save { create; field BeginDate, EndDate; }
+
+        draft action Edit;
+        draft action Activate;
+        draft action Discard;
+        draft action Resume;
+        draft determine action Prepare { validation validateDates; }
+
+        mapping for zfa_travel
+        {
+          TravelUUID         = travel_uuid;
+          TravelID           = travel_id;
+          CustomerID         = customer_id;
+          BeginDate          = begin_date;
+          EndDate            = end_date;
+          OverallStatus      = overall_status;
+          LocalCreatedBy     = local_created_by;
+          LocalCreatedAt     = local_created_at;
+          LocalLastChangedBy = local_last_changed_by;
+          LocalLastChangedAt = local_last_changed_at;
+          LastChangedAt      = last_changed_at;
+        }
+      }
+    negative_responses:
+      - name: activate_optimized_on_2022
+        reason: The optimized addition of the draft action Activate needs SAP_BASIS 7.58, so this behavior definition does not activate on S/4HANA 2022.
+        caught_by: environment
+        response: |
+          // file: src/zr_travel.bdef.asbdef
+          managed implementation in class zbp_r_travel unique;
+          strict ( 2 );
+          with draft;
+
+          define behavior for ZR_Travel alias Travel
+          persistent table zfa_travel
+          draft table zfa_travel_d
+          etag master LocalLastChangedAt
+          lock master total etag LastChangedAt
+          authorization master ( global )
+          {
+            create;
+            update;
+            delete;
+
+            field ( numbering : managed, readonly ) TravelUUID;
+            field ( readonly ) TravelID, OverallStatus, LocalCreatedBy, LocalCreatedAt,
+                               LocalLastChangedBy, LocalLastChangedAt, LastChangedAt;
+            field ( mandatory ) CustomerID, BeginDate, EndDate;
+
+            validation validateDates on save { create; field BeginDate, EndDate; }
+
+            draft action Edit;
+            draft action Activate optimized;
+            draft action Discard;
+            draft action Resume;
+            draft determine action Prepare { validation validateDates; }
+
+            mapping for zfa_travel
+            {
+              TravelUUID         = travel_uuid;
+              TravelID           = travel_id;
+              CustomerID         = customer_id;
+              BeginDate          = begin_date;
+              EndDate            = end_date;
+              OverallStatus      = overall_status;
+              LocalCreatedBy     = local_created_by;
+              LocalCreatedAt     = local_created_at;
+              LocalLastChangedBy = local_last_changed_by;
+              LocalLastChangedAt = local_last_changed_at;
+              LastChangedAt      = last_changed_at;
+            }
           }

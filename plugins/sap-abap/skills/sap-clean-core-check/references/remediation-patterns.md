@@ -2,7 +2,8 @@
 
 Release states quoted here were checked in `objectReleaseInfoLatest.json` from
 https://github.com/SAP/abap-atc-cr-cv-s4hc on 2026-10-14. Re-check with
-`scripts/lookup_api_state.py` before relying on them.
+`scripts/lookup_api_state.py` before relying on them. The clean core levels in pattern 4 follow
+SAP Learning, clean core extensibility (checked 2026-10-18).
 
 ## 1. Table read replaced by a released CDS view
 
@@ -82,10 +83,15 @@ COMMIT ENTITIES.   " Only outside RAP handlers, for example in a report-style cl
 
 If the data shows no successor and api.sap.com offers no released API:
 
-- In SAP S/4HANA Cloud Private Edition or on-premise, write a wrapper in classic ABAP (a
-  separate software component or package), test it, and release it for use in ABAP Cloud
-  development (API state with the use in cloud development contract). ABAP Cloud code then
-  calls the wrapper. Record the wrapper so it can be replaced when SAP releases an API.
+- In SAP S/4HANA Cloud Private Edition or on premises (2022 or later), write a wrapper in
+  Standard ABAP in a separate software component or package, test it, and release it for use
+  in ABAP Cloud development (API state with the use in cloud development contract). ABAP Cloud
+  code then calls the wrapper. Since August 2025, SAP rates an extension by the lowest-ranked
+  technology it uses, so the wrapper gets the level of what it wraps: level B around a classic
+  API (`classicAPI` in `objectClassifications_SAP.json`), level C around an SAP internal
+  object, and level D around a `noAPI` object. Put that level in the report. Existing tier 2
+  wrappers do not have to be migrated. Record the wrapper so it can be replaced when SAP
+  releases an API.
 - In SAP S/4HANA Cloud Public Edition and SAP BTP ABAP environment, wrappers over unreleased
   objects are not possible. Raise an influence request with SAP or redesign the extension
   (for example side-by-side on SAP BTP using a released OData API).

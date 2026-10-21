@@ -50,7 +50,7 @@ jobs:
       - name: Mock evaluation (reference answers, negative controls, criteria coverage)
         run: npm run eval:mock
 
-      - name: Vally lint, oracle, and baseline (offline)
+      - name: Vally lint, oracle, and baseline (downloads the Vally CLI; no model calls)
         run: npm run eval:vally
 
       - name: Quality summary

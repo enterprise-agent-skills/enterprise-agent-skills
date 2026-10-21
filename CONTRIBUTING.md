@@ -21,9 +21,14 @@ does not allow it, or anything that needs credentials to pass required checks.
 ## Before you start
 
 Open an issue with the **Skill proposal** template. Describe the task the skill handles, who
-needs it, and the official documentation you will rely on. A maintainer for that vendor area
-confirms the scope and the target plugin, so you do not write something that overlaps an
-existing skill.
+needs it, and the official documentation you will rely on. For an SAP skill, also name the SAP
+products and the release range it covers, because ABAP samples that start with a file marker are
+checked against the release they target. A maintainer for that vendor area confirms the scope
+and the target plugin, so you do not write something that overlaps an existing skill.
+
+This also applies to a draft you wrote earlier. Drafts are not published as they are: propose
+the skill first, then migrate the verified material into a focused skill with acceptance
+criteria and scenarios.
 
 ## Add a skill
 
