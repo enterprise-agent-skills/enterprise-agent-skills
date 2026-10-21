@@ -27,7 +27,7 @@
     },
     {
       "name": "microsoft-fabric",
-      "display_name": "Microsoft Fabric Data Engineering",
+      "display_name": "Lakehouse data engineering skills for Microsoft Fabric",
       "vendor": "microsoft",
       "category": "data-engineering",
       "maturity": "beta",
@@ -44,7 +44,7 @@
     },
     {
       "name": "salesforce-platform",
-      "display_name": "Salesforce Platform Development",
+      "display_name": "Apex development skills for Salesforce",
       "vendor": "salesforce",
       "category": "development",
       "maturity": "beta",

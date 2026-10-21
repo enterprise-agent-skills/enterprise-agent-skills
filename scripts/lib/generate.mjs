@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { AGENT_PLUGINS_MCP_SCHEMA, AGENT_PLUGINS_PLUGIN_SCHEMA, GENERATED_BEGIN, GENERATED_END, PATHS, REPO_ROOT } from "./constants.mjs";
-import { exists, readText, stableJson } from "./fsutil.mjs";
+import { exists, isLocalJunk, readText, stableJson } from "./fsutil.mjs";
 import { repoUrls, taxonomy } from "./repo-model.mjs";
 import { mdTable } from "./report.mjs";
 import { splitIntoFiles, defaultFileFor } from "../../tests/harness/files.mjs";
@@ -315,6 +315,21 @@ function llmsTxt(model, ctx) {
 
 // ------------------------------------------------------------------ README regions
 
+/** Join words as "a", "a or b", or "a, b, or c" (conj "or"); the same with "and". */
+function joinList(items, conj) {
+  if (items.length <= 1) return items.join("");
+  if (items.length === 2) return `${items[0]} ${conj} ${items[1]}`;
+  return `${items.slice(0, -1).join(", ")}, ${conj} ${items[items.length - 1]}`;
+}
+
+/**
+ * Install and update commands for one plugin and one of its skills. The commands were checked
+ * against the vendors' documentation on 2026-10-21: code.claude.com/docs/en/discover-plugins
+ * (auto-update is off by default for marketplaces like this one), the GitHub Copilot CLI plugin
+ * reference, learn.chatgpt.com/docs/plugins (the Codex IDE extension does not support plugins,
+ * and Codex documents no plugin update command), claude.com/docs/plugins/overview, and the
+ * npx skills command reference.
+ */
 function installBlock(ctx, pluginName = "<plugin>", skillName = "<skill>") {
   return [
     "```text",
@@ -326,15 +341,35 @@ function installBlock(ctx, pluginName = "<plugin>", skillName = "<skill>") {
     `copilot plugin marketplace add ${ctx.urls.slug}`,
     `copilot plugin install ${pluginName}@${ctx.marketplace}`,
     "",
-    "# OpenAI Codex (then open /plugins)",
+    "# OpenAI Codex CLI (the Codex IDE extension does not support plugins)",
     `codex plugin marketplace add ${ctx.urls.slug}`,
+    `# then enter /plugins in Codex, install ${pluginName}, and start a new session`,
     "",
     "# Any Agent Skills compatible agent (Copilot in VS Code, Cursor, Gemini CLI, and others)",
     `npx skills add ${ctx.urls.slug} --skill ${skillName}`,
     "```",
     "",
     `Claude Cowork and claude.ai: Customize > Plugins > Add > Add marketplace, then enter \`${ctx.urls.repo}\`.`,
+    "",
+    "To update:",
+    "",
+    `- Claude Code: run \`claude plugin update ${pluginName}@${ctx.marketplace}\` in your shell, or open the plugin on the **Installed** tab of \`/plugin\` and select **Update now**. Claude Code does not update plugins from this marketplace automatically unless you turn it on: select \`${ctx.marketplace}\` on the **Marketplaces** tab of \`/plugin\`, then **Enable auto-update**.`,
+    `- GitHub Copilot CLI: run \`copilot plugin update ${pluginName}\`.`,
+    "- Claude Cowork and claude.ai: in Customize > Plugins, select **Check for updates**, or turn on **Sync automatically** for this marketplace.",
+    `- Skills installed with \`npx skills\`: run \`npx skills update ${skillName}\`.`,
   ].join("\n");
+}
+
+/** Sentences above the root README install commands: what they install, and how to swap in another plugin or skill. */
+function installIntro(ctx, first, rest, skillName) {
+  const name = first.source.name;
+  const parts = [`The commands below install the \`${name}\` plugin; the \`npx skills\` line installs only its \`${skillName}\` skill.`];
+  if (rest.length) {
+    const others = rest.map((p) => `\`${p.source.name}\``);
+    parts.push(`For another plugin, replace \`${name}\` with ${joinList(others, "or")}; every install name has the form \`<plugin>@${ctx.marketplace}\`.`);
+  }
+  parts.push(`For another skill, replace \`${skillName}\` with any skill name from the catalog below.`);
+  return parts.join(" ");
 }
 
 function readmeWithGeneratedRegions(model, ctx) {
@@ -378,18 +413,29 @@ function readmeWithGeneratedRegions(model, ctx) {
   }
   const covered = new Set(vendors);
   const wanted = (model.config?.vendors ?? []).filter((v) => !covered.has(v.id) && v.id !== "vendor-neutral").map((v) => v.name);
-  if (wanted.length) catalogMd.push(`No skills yet for: ${wanted.join(", ")}. See [CONTRIBUTING.md](CONTRIBUTING.md) to propose one.`, "");
+  if (wanted.length) catalogMd.push(`Planned: skills for ${joinList(wanted, "and")}. See [CONTRIBUTING.md](CONTRIBUTING.md) to propose one.`, "");
 
+  // "Works with", not "Vendor": in plugin listings a vendor is the publisher, and these plugins
+  // are not published by SAP, Microsoft, or Salesforce.
+  const plugins = orderedPlugins(model, ctx);
   const pluginsMd = [mdTable(
-    ["Plugin", "Vendor", "Skills", "Install name", "Maturity"],
-    orderedPlugins(model, ctx).map((p) => [
+    ["Plugin", "Works with", "Skills", "Install name", "Maturity"],
+    plugins.map((p) => [
       `[${p.source.display_name}](${p.relDir}/README.md)`,
       ctx.tax.vendorNames[p.source.vendor] ?? p.source.vendor,
       orderedSkillNames(p).map((n) => `\`${n}\``).join(", "),
       `\`${p.source.name}@${ctx.marketplace}\``,
       p.source.maturity,
     ]),
-  ), "", installBlock(ctx)];
+  ), ""];
+  // Concrete commands for the first plugin (SAP), with the general form next to them.
+  const [first, ...rest] = plugins;
+  if (first) {
+    const skillName = orderedSkillNames(first)[0] ?? "<skill>";
+    pluginsMd.push(installIntro(ctx, first, rest, skillName), "", installBlock(ctx, first.source.name, skillName));
+  } else {
+    pluginsMd.push(installBlock(ctx));
+  }
 
   text = replaceRegion(text, "catalog", catalogMd.join("\n").trimEnd());
   text = replaceRegion(text, "plugins", pluginsMd.join("\n").trimEnd());
@@ -540,10 +586,47 @@ function sapEnvironmentsDoc(model, ctx) {
 
 // ------------------------------------------------------------------ plugin README
 
+/**
+ * What a helper script bundled in a skill downloads, keyed by "<skill name>/<path in the skill>",
+ * for the "Data and permissions" section of the plugin README. Each note was written from the
+ * script source (checked 2026-10-21) and is used only while the script still names every host
+ * listed here. Any other script that contains a URL gets a generic note naming its hosts, so a
+ * README never says a plugin sends no data while one of its scripts can connect somewhere.
+ */
+const SCRIPT_NETWORK_NOTES = {
+  "sap-clean-core-check/scripts/lookup_api_state.py": {
+    hosts: ["raw.githubusercontent.com"],
+    text: "downloads a file from SAP's Cloudification Repository on GitHub ([SAP/abap-atc-cr-cv-s4hc](https://github.com/SAP/abap-atc-cr-cv-s4hc), served from raw.githubusercontent.com) each time an agent runs it. The file lists the release state of SAP objects. The script looks up object names in it on your machine and sends no code or object names. To work offline, download the file once and pass `--source <local file>`.",
+  },
+};
+
+/** Helper scripts in the given skills, with the hosts each one names in an http or https URL. */
+function bundledScripts(skills) {
+  return skills.flatMap((k) =>
+    (k.files ?? [])
+      .filter((f) => f.startsWith("scripts/") && !isLocalJunk(f))
+      .sort()
+      .map((f) => {
+        const text = readText(join(k.dir, f));
+        const hosts = [...new Set([...text.matchAll(/\bhttps?:\/\/([a-z0-9.-]+)/gi)].map((m) => m[1].toLowerCase()))].sort();
+        return { path: `skills/${k.dirName}/${f}`, key: `${k.data.name}/${f}`, hosts };
+      }),
+  );
+}
+
+function scriptNetworkNote(script) {
+  const known = SCRIPT_NETWORK_NOTES[script.key];
+  if (known && known.hosts.every((h) => script.hosts.includes(h))) return `The helper script \`${script.path}\` ${known.text}`;
+  return `The helper script \`${script.path}\` contains URLs for ${joinList(script.hosts, "and")} and can connect to them when an agent runs it.`;
+}
+
 function pluginReadme(plugin, servers, ctx) {
   const s = plugin.source;
   const order = orderedSkillNames(plugin);
   const skills = plugin.skills.filter((k) => k.data).sort((a, b) => order.indexOf(a.data.name) - order.indexOf(b.data.name));
+  const vendorName = ctx.tax.vendorNames[s.vendor] ?? s.vendor;
+  const neutral = s.vendor === "vendor-neutral";
+  const publisher = (s.author ?? ctx.defaultAuthor).name;
   const lines = [
     `<!-- ${"Generated by scripts/build.mjs from plugin.yaml and SKILL.md files. Do not edit by hand."} -->`,
     `# ${s.display_name}`,
@@ -552,9 +635,12 @@ function pluginReadme(plugin, servers, ctx) {
     "",
   ];
   if (s.long_description) lines.push(s.long_description.trim(), "");
+  // "Works with" names the vendor whose products the skills target; "Publisher" names who
+  // publishes the plugin, so the table never reads as if the vendor published it.
   lines.push(mdTable(["Field", "Value"], [
     ["Plugin name", `\`${s.name}\``],
-    ["Vendor", ctx.tax.vendorNames[s.vendor] ?? s.vendor],
+    ["Works with", vendorName],
+    ["Publisher", neutral ? `${publisher} (independent)` : `${publisher} (independent; not affiliated with ${vendorName})`],
     ["Category", ctx.tax.categoryNames[s.category] ?? s.category],
     ["Maturity", s.maturity],
     ["Version", s.version],
@@ -585,13 +671,25 @@ function pluginReadme(plugin, servers, ctx) {
   }
   lines.push("## Install", "", installBlock(ctx, s.name, skills[0]?.data.name ?? "<skill>"), "");
   lines.push("## Data and permissions", "");
+  const scripts = bundledScripts(skills);
+  const networkNotes = scripts.filter((x) => x.hosts.length).map(scriptNetworkNote);
   if (servers.length) {
     lines.push("This plugin bundles the MCP servers below. They start or connect only in agents that support plugin MCP configuration. Review each server's own documentation for the data it accesses.", "");
     lines.push(mdTable(["Server", "Publisher", "Transport", "Authentication", "Source"], servers.map((m) => [m.name, m.publisher, m.transport, m.auth, m.source])), "");
+    if (networkNotes.length) lines.push(networkNotes.join(" "), "");
   } else {
-    lines.push("This plugin contains instructions, reference documents, and optional helper scripts only. It bundles no MCP servers or hooks and sends no data anywhere by itself. Any data access happens through tools you have already connected to your agent.", "");
+    const contents = !scripts.length
+      ? "instructions and reference documents"
+      : `instructions, reference documents, and ${scripts.length === 1 ? "a helper script" : "helper scripts"}`;
+    if (networkNotes.length) {
+      lines.push([`This plugin contains ${contents}. It bundles no MCP servers or hooks.`, ...networkNotes, "Any other data access happens through tools you have already connected to your agent."].join(" "), "");
+    } else {
+      lines.push(`This plugin contains ${contents} only. It bundles no MCP servers or hooks and sends no data anywhere by itself. Any data access happens through tools you have already connected to your agent.`, "");
+    }
   }
   lines.push("## Tests", "", `Acceptance criteria and scenarios for each skill live in [tests/scenarios](../../tests/scenarios). Run \`npm run eval:mock -- --skill <name>\` from the repository root.`, "");
+  const notAffiliated = neutral ? "any vendor named here" : `${vendorName} or any other vendor named here`;
+  lines.push("## Independence and trademarks", "", `This plugin is an independent community project. It is not affiliated with, sponsored by, or endorsed by ${notAffiliated}. Product and company names are trademarks of their owners and are used only to identify the products the skills work with.`, "");
   return lines.join("\n");
 }
 

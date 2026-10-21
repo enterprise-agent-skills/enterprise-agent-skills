@@ -13,6 +13,10 @@
  *   --vendor <id>       vendor id; required when the plugin does not exist yet
  *
  * Every placeholder is written as {{TODO: ...}}. `npm run validate` fails while any remain.
+ *
+ * A new plugin's display_name describes the skills and names the vendor product only after
+ * "for", for example "ABAP development skills for SAP S/4HANA, SAP ECC, and SAP BTP", so it
+ * never reads like an official product name.
  */
 import { join } from "node:path";
 import { REPO_ROOT, PATHS } from "./lib/constants.mjs";
@@ -92,5 +96,12 @@ for (const [path] of writes) if (exists(path)) fail(`Refusing to overwrite ${pat
 for (const [path, content] of writes) {
   writeIfChanged(path, content);
   console.log(`created ${path.slice(REPO_ROOT.length + 1).replace(/\\/g, "/")}`);
+}
+if (!existingPlugin) {
+  console.log(
+    `\nIn plugins/${args.plugin}/plugin.yaml, write display_name as a description of the skills that names the` +
+      ' product only after "for", for example "Lakehouse data engineering skills for Microsoft Fabric".' +
+      " Do not start it with a vendor or product name, so it never reads like an official product name.",
+  );
 }
 console.log("\nNext: replace every {{TODO: ...}}, then run npm run build, npm run check, and npm run eval:vally.");

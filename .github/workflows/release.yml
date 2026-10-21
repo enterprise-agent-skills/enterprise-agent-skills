@@ -50,6 +50,16 @@ jobs:
       - name: Install dependencies
         run: npm ci --ignore-scripts
 
+      # The release notes and provenance checks name the repository from repo.config.yaml, so a
+      # tag pushed before a rename on GitHub would publish wrong links.
+      - name: Repository matches repo.config.yaml
+        run: |
+          expected=$(node --input-type=module -e "import { parse } from 'yaml'; import { readFileSync } from 'node:fs'; const r = parse(readFileSync('repo.config.yaml', 'utf8')).repository; console.log(r.owner + '/' + r.name);")
+          if [ "${expected,,}" != "${GITHUB_REPOSITORY,,}" ]; then
+            echo "::error::repo.config.yaml names ${expected}, but this workflow runs in ${GITHUB_REPOSITORY}. Rename the repository or fix repository.owner and repository.name before tagging."
+            exit 1
+          fi
+
       - name: Checks (generated files, validation, security, unit tests, mock evaluation)
         run: npm run check
 

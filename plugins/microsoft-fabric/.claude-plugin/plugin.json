@@ -1,6 +1,6 @@
 {
   "name": "microsoft-fabric",
-  "displayName": "Microsoft Fabric Data Engineering",
+  "displayName": "Lakehouse data engineering skills for Microsoft Fabric",
   "version": "0.1.0",
   "description": "Skills for data engineering in Microsoft Fabric: incremental, idempotent loads into Lakehouse Delta tables from notebooks, with secrets from Azure Key Vault and routine table maintenance. Bundles the read-only Microsoft Learn MCP server for current documentation.",
   "author": {

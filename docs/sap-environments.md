@@ -237,7 +237,10 @@ features with the release that introduced them, a program that uses the feature,
 equivalent without it. [tests/unit/abap-release-features.test.mjs](../tests/unit/abap-release-features.test.mjs)
 checks, for every feature, that the program fails on the release before, passes on the release
 that introduced it and on S/4HANA 2025, and that the equivalent compiles on the older release
-and on S/4HANA 2025. A classic program full of look-alikes (`FOR ALL ENTRIES`,
+and on S/4HANA 2025. Where the offline check accepts a feature later than SAP does, the
+registry sets `validator_from`, and the program must pass from that release and fail on the
+one before it; today this applies only to `line_exists( )` (SAP: 7.40 SP02, offline check:
+7.40 SP08). A classic program full of look-alikes (`FOR ALL ENTRIES`,
 `OPEN DATASET ... FOR INPUT`, comments and literals with newer syntax) must pass on 7.00, which
 guards the feature rules against false positives. The same manifest generates the table in
 [release-syntax.md](../plugins/sap-abap/skills/sap-abap-standard/references/release-syntax.md),

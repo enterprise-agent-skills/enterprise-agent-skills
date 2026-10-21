@@ -21,6 +21,8 @@
 - [ ] `npm run eval:vally` passes
 - [ ] Each scenario has at least one negative response with `caught_by`
 - [ ] No pattern was weakened to make a check pass
+- [ ] I wrote this content, or its source and license are in ATTRIBUTION.md; it contains no
+      customer data and nothing confidential to an employer or client
 
 ## Review notes
 

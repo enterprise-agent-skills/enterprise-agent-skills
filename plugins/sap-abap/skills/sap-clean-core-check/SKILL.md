@@ -74,7 +74,9 @@ like `notToBeReleased` without a successor.
    The script reads `objectReleaseInfoLatest.json` (Public Edition) unless you pass
    `--source`. For any other target, pass the file from the table, for example
    `python3 scripts/lookup_api_state.py --source https://raw.githubusercontent.com/SAP/abap-atc-cr-cv-s4hc/main/src/objectReleaseInfo_PCE2023_3.json VBAK`,
-   and name the file in the report. Pass `--source <path-to-local-json>` when the machine has
+   and name the file in the report. The script matches names across object types, so compare
+   the Type column with the object you looked up (VBAK is both a table, TABL, and a function
+   group, FUGR). Pass `--source <path-to-local-json>` when the machine has
    no internet access, and `--json` for machine-readable output. The script accepts only HTTPS
    URLs or local files.
 3. **Plan replacements.** For each `notToBeReleased` or `deprecated` object, take the
@@ -138,7 +140,7 @@ sap-abap-enhancements.
 |-------|---------|------------|-----------------------|
 | A | Released APIs and extension points only, in ABAP for Cloud Development (or side-by-side on SAP BTP) | No finding | Every SAP object used is `released` in the release file of the target, and the object uses ABAP for Cloud Development |
 | B | Classic or released APIs, built with Standard ABAP | Priority 3 | Objects used are `classicAPI` in `objectClassifications_SAP.json` or `released` |
-| C | SAP internal objects, including reads of SAP tables | Priority 2 | Objects that are neither released nor classified, for example a read of VBAK (`notToBeReleased`, not in the classification file) |
+| C | SAP internal objects, including reads of SAP tables | Priority 2 | Objects that are neither released nor classified, for example a read of the table VBAK (`notToBeReleased`; the classification file lists only the function group VBAK, type FUGR) |
 | D | Objects SAP does not recommend, modifications, implicit enhancements, writes to SAP tables | Priority 1 | `noAPI` in `objectClassifications_SAP.json`, or any write to an SAP table |
 
 An extension gets the level of the lowest-ranked technology it uses. The ATC checks "Usage of

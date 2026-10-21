@@ -8,7 +8,8 @@ Each skill states the SAP products, SAP_BASIS releases, and ABAP development mod
 | Field | Value |
 | --- | --- |
 | Plugin name | `sap-abap` |
-| Vendor | SAP |
+| Works with | SAP |
+| Publisher | Enterprise Agent Skills contributors (independent; not affiliated with SAP) |
 | Category | Development |
 | Maturity | beta |
 | Version | 0.2.0 |
@@ -43,8 +44,9 @@ Pick the skill that matches your system and development model. Hosting on premis
 copilot plugin marketplace add enterprise-agent-skills/enterprise-agent-skills
 copilot plugin install sap-abap@enterprise-agent-skills
 
-# OpenAI Codex (then open /plugins)
+# OpenAI Codex CLI (the Codex IDE extension does not support plugins)
 codex plugin marketplace add enterprise-agent-skills/enterprise-agent-skills
+# then enter /plugins in Codex, install sap-abap, and start a new session
 
 # Any Agent Skills compatible agent (Copilot in VS Code, Cursor, Gemini CLI, and others)
 npx skills add enterprise-agent-skills/enterprise-agent-skills --skill sap-abap-standard
@@ -52,10 +54,21 @@ npx skills add enterprise-agent-skills/enterprise-agent-skills --skill sap-abap-
 
 Claude Cowork and claude.ai: Customize > Plugins > Add > Add marketplace, then enter `https://github.com/enterprise-agent-skills/enterprise-agent-skills`.
 
+To update:
+
+- Claude Code: run `claude plugin update sap-abap@enterprise-agent-skills` in your shell, or open the plugin on the **Installed** tab of `/plugin` and select **Update now**. Claude Code does not update plugins from this marketplace automatically unless you turn it on: select `enterprise-agent-skills` on the **Marketplaces** tab of `/plugin`, then **Enable auto-update**.
+- GitHub Copilot CLI: run `copilot plugin update sap-abap`.
+- Claude Cowork and claude.ai: in Customize > Plugins, select **Check for updates**, or turn on **Sync automatically** for this marketplace.
+- Skills installed with `npx skills`: run `npx skills update sap-abap-standard`.
+
 ## Data and permissions
 
-This plugin contains instructions, reference documents, and optional helper scripts only. It bundles no MCP servers or hooks and sends no data anywhere by itself. Any data access happens through tools you have already connected to your agent.
+This plugin contains instructions, reference documents, and a helper script. It bundles no MCP servers or hooks. The helper script `skills/sap-clean-core-check/scripts/lookup_api_state.py` downloads a file from SAP's Cloudification Repository on GitHub ([SAP/abap-atc-cr-cv-s4hc](https://github.com/SAP/abap-atc-cr-cv-s4hc), served from raw.githubusercontent.com) each time an agent runs it. The file lists the release state of SAP objects. The script looks up object names in it on your machine and sends no code or object names. To work offline, download the file once and pass `--source <local file>`. Any other data access happens through tools you have already connected to your agent.
 
 ## Tests
 
 Acceptance criteria and scenarios for each skill live in [tests/scenarios](../../tests/scenarios). Run `npm run eval:mock -- --skill <name>` from the repository root.
+
+## Independence and trademarks
+
+This plugin is an independent community project. It is not affiliated with, sponsored by, or endorsed by SAP or any other vendor named here. Product and company names are trademarks of their owners and are used only to identify the products the skills work with.

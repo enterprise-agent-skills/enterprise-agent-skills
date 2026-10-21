@@ -62,6 +62,7 @@ test("package: one ZIP per skill and plugin, each skill in one folder named afte
     }
     const notes = readFileSync(join(out, "RELEASE_NOTES.md"), "utf8");
     assert.match(notes, /#download-skills-as-zip-files/, "release notes link to the README download section");
+    assert.match(readFileSync(join(REPO_ROOT, "README.md"), "utf8"), /^## Download skills as ZIP files$/m, "README.md must have the section the release notes link to");
     assert.match(notes, /sha256sum -c --ignore-missing SHA256SUMS\.txt/, "a single download must verify on Linux");
     assert.match(notes, /shasum -a 256 -c --ignore-missing SHA256SUMS\.txt/, "a single download must verify on macOS");
     assert.match(notes, /Not affiliated with, sponsored by, or endorsed by SAP, /);

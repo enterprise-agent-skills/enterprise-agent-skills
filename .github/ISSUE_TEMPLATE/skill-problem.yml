@@ -3,6 +3,10 @@ description: A skill gives wrong, outdated, or unsafe guidance, or does not trig
 title: "Skill problem: <skill-name>"
 labels: ["skill-problem", "needs-triage"]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Issues are public. Do not paste customer data, credentials, host names, system IDs, or proprietary code. Reduce the prompt and the output to a minimal example first.
   - type: input
     id: skill
     attributes:

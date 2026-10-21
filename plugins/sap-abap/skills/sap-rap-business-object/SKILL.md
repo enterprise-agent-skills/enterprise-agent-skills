@@ -27,7 +27,7 @@ metadata:
   abap-language-version: "cloud"
   sap-basis-min: "7.57"
   abap-env-default: "product=s4hana release=2023 language_version=cloud"
-  derived-from: earlier unpublished draft sap-abap-fiori-dev
+  derived-from: earlier draft sap-abap-fiori-dev, never released as a skill
 ---
 
 # SAP RAP managed business object with draft

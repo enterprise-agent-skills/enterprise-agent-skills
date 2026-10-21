@@ -16,6 +16,8 @@ covers the mechanical checks; reviewers own the judgment calls.
       documentation linked in the PR, with the date.
 - [ ] Release-dependent statements say which releases they apply to.
 - [ ] Code samples follow current recommended practice, not just valid syntax.
+- [ ] `metadata.last-verified` is set only when a live verification (a real system or a live
+      model evaluation) is recorded; a documentation check does not count.
 
 ## Tests
 

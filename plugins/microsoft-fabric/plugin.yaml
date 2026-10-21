@@ -1,5 +1,5 @@
 name: microsoft-fabric
-display_name: Microsoft Fabric Data Engineering
+display_name: Lakehouse data engineering skills for Microsoft Fabric
 version: 0.1.0
 description: >-
   Skills for data engineering in Microsoft Fabric: incremental, idempotent loads into Lakehouse

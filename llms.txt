@@ -5,8 +5,8 @@
 ## Plugins
 
 - [ABAP development skills for SAP S/4HANA, SAP ECC, and SAP BTP](https://github.com/enterprise-agent-skills/enterprise-agent-skills/tree/main/plugins/sap-abap): Skills for SAP ABAP development across customer-managed and cloud systems: Standard ABAP on SAP ECC 6.0, SAP NetWeaver AS ABAP, and SAP S/4HANA (on premises or on Azure, AWS, or Google Cloud VMs), enhancements and integration, plus ABAP Cloud with RAP and clean core assessments.
-- [Microsoft Fabric Data Engineering](https://github.com/enterprise-agent-skills/enterprise-agent-skills/tree/main/plugins/microsoft-fabric): Skills for data engineering in Microsoft Fabric: incremental, idempotent loads into Lakehouse Delta tables from notebooks, with secrets from Azure Key Vault and routine table maintenance. Bundles the read-only Microsoft Learn MCP server for current documentation.
-- [Salesforce Platform Development](https://github.com/enterprise-agent-skills/enterprise-agent-skills/tree/main/plugins/salesforce-platform): Skills for Salesforce Platform development with Apex: bulk-safe trigger handlers, recursion control, user-mode data access, and tests that cover full 200-record trigger batches.
+- [Lakehouse data engineering skills for Microsoft Fabric](https://github.com/enterprise-agent-skills/enterprise-agent-skills/tree/main/plugins/microsoft-fabric): Skills for data engineering in Microsoft Fabric: incremental, idempotent loads into Lakehouse Delta tables from notebooks, with secrets from Azure Key Vault and routine table maintenance. Bundles the read-only Microsoft Learn MCP server for current documentation.
+- [Apex development skills for Salesforce](https://github.com/enterprise-agent-skills/enterprise-agent-skills/tree/main/plugins/salesforce-platform): Skills for Salesforce Platform development with Apex: bulk-safe trigger handlers, recursion control, user-mode data access, and tests that cover full 200-record trigger batches.
 
 ## Skills
 

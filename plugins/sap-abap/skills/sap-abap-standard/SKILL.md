@@ -31,7 +31,7 @@ metadata:
   abap-language-version: "standard"
   sap-basis-min: "7.00"
   abap-env-default: "product=ecc release=ehp8 database=anydb"
-  derived-from: earlier unpublished draft sap-abap-fiori-dev
+  derived-from: earlier draft sap-abap-fiori-dev, never released as a skill
 ---
 
 # Standard ABAP development for ECC, NetWeaver, and S/4HANA

@@ -1,6 +1,6 @@
 {
   "name": "salesforce-platform",
-  "displayName": "Salesforce Platform Development",
+  "displayName": "Apex development skills for Salesforce",
   "version": "0.1.0",
   "description": "Skills for Salesforce Platform development with Apex: bulk-safe trigger handlers, recursion control, user-mode data access, and tests that cover full 200-record trigger batches.",
   "author": {

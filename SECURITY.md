@@ -5,10 +5,11 @@ skill like code.
 
 ## Reporting a vulnerability
 
-Do not open a public issue. Use GitHub private vulnerability reporting: the **Report a
-vulnerability** button on the repository's Security tab. Include the affected file, what an
-attacker could do, and steps to reproduce. Maintainers acknowledge reports within five working
-days and agree on a fix and disclosure timeline with the reporter.
+Do not open a public issue. Report it privately with GitHub private vulnerability reporting at
+https://github.com/enterprise-agent-skills/enterprise-agent-skills/security/advisories/new (the
+**Report a vulnerability** button on the repository's **Security and quality** tab). Include the
+affected file, what an attacker could do, and steps to reproduce. Maintainers acknowledge
+reports within five working days and agree on a fix and disclosure timeline with the reporter.
 
 ## What counts as a vulnerability here
 
@@ -31,6 +32,7 @@ days and agree on a fix and disclosure timeline with the reporter.
 | Bundled scripts listed for mandatory human review | security report and the pull request template |
 | Dependency review, CodeQL, OpenSSF Scorecard | `.github/workflows/security.yml`, `scorecard.yml` |
 | Least-privilege workflow tokens, actions pinned to commit SHAs | all workflows |
+| Release ZIP files built by a job with a read-only token; the job that publishes runs no repository code; SHA-256 checksums and signed build provenance attached | `.github/workflows/release.yml` |
 
 ## Hooks
 
@@ -41,4 +43,6 @@ file access, sign-off by two maintainers) before the validator allows them.
 ## Supported versions
 
 Only the latest commit on the default branch is supported. Plugins are versioned; users should
-update to the latest version through their agent's plugin manager.
+update to the latest version through their agent's plugin manager. Release ZIP files are built
+from a tagged commit, so a fix reaches them with the next release; if you installed from a ZIP
+file, replace it with the one from the latest release.
