@@ -204,9 +204,9 @@ without a file marker are not parsed. `line_exists( )` passes the offline check 
 
 | Platform | How this repository supports it | Status |
 |----------|---------------------------------|--------|
-| Claude Code | `.claude-plugin/plugin.json` per plugin, `.claude-plugin/marketplace.json` | Manifests validated with `claude plugin validate` |
+| Claude Code | `.claude-plugin/plugin.json` per plugin, `.claude-plugin/marketplace.json` | Installed from the marketplace and used on 2026-10-21 (`sap-abap` 0.2.0) |
 | Claude Cowork and claude.ai | Same plugin folders through the marketplace | Generated; not yet verified end to end |
-| GitHub Copilot CLI | Agent Plugins `plugin.json`, `.github/plugin/marketplace.json` | Generated; not yet verified end to end |
+| GitHub Copilot CLI | Agent Plugins `plugin.json`, `.github/plugin/marketplace.json` | Installed from the marketplace and used on 2026-10-21 (`sap-abap` 0.2.0); see the notes in [platform-compatibility.md](docs/platform-compatibility.md#recording-a-verification) |
 | GitHub Copilot in VS Code, Cursor, Gemini CLI, others | `npx skills add`, plus `.cursor-plugin` and `gemini-extension.json` manifests | Generated; not yet verified end to end |
 | OpenAI Codex | Agent Plugins `plugin.json`, `.agents/plugins/marketplace.json` | Generated; not yet verified end to end |
 
