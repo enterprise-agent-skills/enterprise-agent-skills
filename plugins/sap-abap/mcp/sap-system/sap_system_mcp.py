@@ -28,8 +28,10 @@ Configuration comes from the process environment first and then from the config 
   SAP_URL             the ICM URL, for example https://sap.example.com:44300 or http://localhost:50000
   SAP_USER, SAP_PASSWORD, SAP_CLIENT (001), SAP_LANGUAGE (EN)
   SAP_INSECURE        true to skip TLS certificate checks (self-signed trial systems only)
-  SAP_READ_ONLY       true (default): HTTP verbs that could change the system are refused
   SAP_BLOCK_FREE_SQL  true (default): the free-form SELECT tool stays disabled
+
+The server is read-only in every mode: HTTP verbs that could change the system are always
+refused, and there is no setting that turns that off.
   SAP_MODE            focused (default) or full
   SAP_TIMEOUT, SAP_MAX_ROWS   safety ceilings (60 seconds, 500 rows)
 
@@ -171,7 +173,7 @@ class Settings:
             client=(values.get("SAP_CLIENT") or "001").strip() or "001",
             language=(values.get("SAP_LANGUAGE") or "EN").strip() or "EN",
             insecure=_as_bool(values.get("SAP_INSECURE"), False),
-            read_only=_as_bool(values.get("SAP_READ_ONLY"), True),
+            # read_only stays True: no setting turns the write guard off.
             block_free_sql=_as_bool(values.get("SAP_BLOCK_FREE_SQL"), True),
             verbose=_as_bool(values.get("SAP_VERBOSE"), False),
             mode=(values.get("SAP_MODE") or "focused").strip().lower() or "focused",
@@ -345,7 +347,7 @@ class SapClient:
         # ADT reads use GET and a few POSTs (data preview, node structure). Everything that
         # could change the system (PUT, DELETE, PATCH, and so on) is refused in read-only mode.
         if self.s.read_only and method not in {"GET", "HEAD", "POST", "OPTIONS"}:
-            raise SapError(f"SAP_READ_ONLY is enabled: HTTP {method} is blocked. This server never modifies the SAP system.")
+            raise SapError(f"This server is read-only: HTTP {method} is blocked. It never modifies the SAP system.")
 
         hdrs = dict(headers or {})
         if csrf:
@@ -1339,7 +1341,7 @@ def cmd_setup(args: argparse.Namespace) -> int:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     lines = ["# sap-system MCP server configuration. Keep this file private; it holds the SAP password."]
     lines += [f"{key}={value}" for key, value in values.items()]
-    for key in ("SAP_READ_ONLY", "SAP_BLOCK_FREE_SQL", "SAP_MODE", "SAP_TIMEOUT", "SAP_MAX_ROWS", "SAP_VERBOSE"):
+    for key in ("SAP_BLOCK_FREE_SQL", "SAP_MODE", "SAP_TIMEOUT", "SAP_MAX_ROWS", "SAP_VERBOSE"):
         if current.get(key):
             lines.append(f"{key}={current[key]}")
     with open(path, "w", encoding="utf-8") as handle:
@@ -1430,12 +1432,13 @@ def cmd_self_check(_: argparse.Namespace) -> int:
     expect("http needs auth", _raises_runtime(lambda: HttpConfig.from_values({"MCP_PUBLIC_URL": "https://host.example.com/mcp"})))
     expect("short demo secret", _raises_runtime(lambda: HttpConfig.from_values({"MCP_PUBLIC_URL": "https://host.example.com/mcp", "MCP_DEMO_PATH_SECRET": "short"})))
     expect("placeholder counts as unset", _PLACEHOLDER.match("${user_config.sap_url}") is not None and _PLACEHOLDER.match("https://h") is None)
+    expect("read-only cannot be switched off", Settings.from_values({"SAP_URL": "https://h:44300", "SAP_USER": "u", "SAP_PASSWORD": "p", "SAP_READ_ONLY": "false"}).read_only is True)
     # The scheme is split so the repository's security scan does not read this test value as
     # a real plain-HTTP endpoint.
     expect("plaintext warning", Settings("http:" + "//10.0.0.5:50000", "u", "p").plaintext_warning() is not None)
     expect("no warning for localhost", Settings("http://localhost:50000", "u", "p").plaintext_warning() is None)
 
-    total = 35
+    total = 36
     if failures:
         print(f"self-check: {len(failures)} of {total} checks failed: {', '.join(failures)}", file=sys.stderr)
         return 1

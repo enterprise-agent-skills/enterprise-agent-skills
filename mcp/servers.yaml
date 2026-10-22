@@ -107,7 +107,7 @@ servers:
       take precedence over that file, and `SAP_SYSTEM_MCP_ENV` names a different file.
     data_access: >-
       It connects only to the SAP URL you configure, with your own SAP user and password, and
-      sends data to no other host. It is read-only by default: it blocks every HTTP verb that
+      sends data to no other host. It is read-only, with no setting that turns that off: it blocks every HTTP verb that
       could change the system, blocks free SQL, validates object names against SAP naming rules,
       filters WHERE clauses, and limits rows (500 by default). Your credentials never appear in
       tool results. Prefer an HTTPS URL; use http:// only for a trial system on the same machine.

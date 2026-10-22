@@ -115,7 +115,7 @@ test("the plugin README says where the server runs, what it reaches, and how eac
   for (const phrase of [
     "published from this repository",
     "runs on your machine",
-    "read-only by default",
+    "read-only, with no setting that turns that off",
     "only to the SAP URL you configure",
     "Claude Code asks for them",
     "secure credential store",
