@@ -1,0 +1,35 @@
+# sap-system MCP server in HTTPS mode: the Python server on 127.0.0.1:8000 and Caddy in front
+# of it on port 443 with a certificate from Let's Encrypt. Both use the host network so the
+# server can reach an SAP system that runs on the same host (for example the A4H trial in
+# Docker on port 50000) and Caddy can bind port 443 directly.
+#
+# Copy .env.example to .env first. Then, from this folder:
+#   docker compose up -d --build
+services:
+  mcp:
+    build:
+      context: ../..
+      dockerfile: deploy/sap-system-mcp/Dockerfile
+    env_file: .env
+    environment:
+      MCP_BIND_HOST: 127.0.0.1
+      MCP_PORT: "8000"
+    network_mode: host
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+
+  caddy:
+    image: caddy:2
+    env_file: .env
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data: {}
+  caddy_config: {}

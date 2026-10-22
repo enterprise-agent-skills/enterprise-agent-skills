@@ -1,0 +1,28 @@
+# Caddy in front of the sap-system MCP server. PUBLIC_HOST and ACME_EMAIL come from .env.
+# Only port 443 is needed: the certificate is obtained with the TLS-ALPN-01 challenge, so
+# port 80 can stay closed.
+{
+	email {$ACME_EMAIL}
+}
+
+{$PUBLIC_HOST} {
+	tls {
+		issuer acme {
+			disable_http_challenge
+		}
+	}
+
+	@mcp path /mcp /mcp/* /.well-known/* /healthz
+	handle @mcp {
+		reverse_proxy 127.0.0.1:8000
+	}
+
+	handle {
+		respond "sap-system MCP server" 404
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}
