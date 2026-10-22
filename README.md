@@ -101,7 +101,8 @@ each explained in [docs/copilot-cowork.md](docs/copilot-cowork.md):
 **Claude Cowork and claude.ai** do not start the server (Cowork does not prompt for the
 values, and chat ignores local MCP servers); the skills ask you for the release instead.
 
-The server is read-only by default and sends data only to the SAP URL you configure. Your
+The server is read-only, with no setting that turns that off, and sends data only to the SAP
+URL you configure. Your
 credentials stay on your machine, in the agent's credential store or in that file, never in
 the plugin or in this repository. Prefer an HTTPS URL; use `http://` only for a trial system
 on the same machine. The [plugin README](plugins/sap-abap/README.md#data-and-permissions)

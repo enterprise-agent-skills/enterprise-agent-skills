@@ -92,9 +92,10 @@ are rejected, and the server publishes its OAuth 2.0 protected resource metadata
 `https://<host>/.well-known/oauth-protected-resource/mcp`, as the MCP authorization
 specification requires (the document sits under the MCP path because the resource has one).
 
-What the server refuses, by default: `SAP_READ_ONLY=true` blocks every HTTP verb that could
-change the system; `SAP_BLOCK_FREE_SQL=true` blocks free SQL; object names are validated against
-SAP naming rules; WHERE clauses are character-filtered; results are capped at `SAP_MAX_ROWS`.
+What the server refuses: every HTTP verb that could change the system, always, with no
+setting that turns that off; free SQL while `SAP_BLOCK_FREE_SQL` is `true` (the default);
+object names that break SAP naming rules; WHERE clauses with characters outside a narrow set;
+results beyond `SAP_MAX_ROWS`.
 The server sends data only to the SAP URL in its env file and to no other host, and it reports
 nothing to the maintainers of this repository.
 
@@ -127,7 +128,8 @@ template (`.env.example`), and `deploy.sh`, which installs or updates the server
 writes the `.env` file. In the env file you set:
 
 - `SAP_URL`, `SAP_USER`, `SAP_PASSWORD`, `SAP_CLIENT` (default `001`), and `SAP_LANGUAGE`
-  (default `EN`). Keep `SAP_READ_ONLY` and `SAP_BLOCK_FREE_SQL` at their default `true`.
+  (default `EN`). Keep `SAP_BLOCK_FREE_SQL` at its default `true`; the server is read-only in
+  every mode.
 - `MCP_PUBLIC_URL`, the canonical MCP URL, `https://<host>/mcp`, plus `MCP_BIND_HOST` and
   `MCP_PORT` for the container.
 - The `ENTRA_*` variables from [Step 2](#step-2-register-the-connector-sign-in-in-microsoft-entra-id).
