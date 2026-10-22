@@ -48,25 +48,67 @@ and their fields, source code, packages, and OData services. The server runs on 
 and needs Python 3.10 or later with the `mcp` and `httpx` packages; its launcher prints the
 install command when they are missing.
 
-How each agent gets the connection details (SAP URL, user, password, client, and language):
+You need: the URL of the system's ICM (for example `https://sap.example.com:44300`, or
+`http://localhost:50000` for a trial system in Docker), an SAP user with display
+authorizations, the client, and Python 3.10 or later on your machine with the two packages:
 
-- Claude Code asks for them when you enable the plugin and keeps the password in its secure
-  credential store.
-- Gemini CLI asks for them when the plugin folder is installed as an extension.
-- Claude Cowork and claude.ai do not start the server: Cowork does not prompt for the values,
-  and chat ignores local MCP servers. The skills ask you for the release instead.
-- GitHub Copilot CLI, OpenAI Codex, Cursor, and other Agent Plugins hosts do not prompt: run
-  `node <plugin folder>/mcp/sap-system/launch.mjs setup` once. It tests the connection and
-  writes the values to a file in your user profile, outside the plugin folder.
-- Microsoft 365 Copilot Cowork cannot start a local server. [docs/copilot-cowork.md](docs/copilot-cowork.md)
-  explains the hosted variant of the same server.
+```text
+python -m pip install "mcp>=2,<3" "httpx>=0.28,<1"
+```
+
+Then follow the steps for your agent. In every case, test with the question "Which SAP
+release is my system?": the skill calls `sap_system_info` and answers with the SAP_BASIS
+release and support package.
+
+**Claude Code**
+
+1. Install or update the plugin: `/plugin install sap-abap@enterprise-agent-skills`, or
+   `claude plugin update sap-abap@enterprise-agent-skills` if it is already installed.
+2. When Claude Code asks for the plugin's settings (on enable, or later under `/config`),
+   enter the SAP URL, user, password, client, and logon language. The password goes to
+   Claude Code's secure credential store.
+3. Restart Claude Code and ask the test question.
+
+**GitHub Copilot CLI**
+
+1. Install the plugin: `copilot plugin marketplace add enterprise-agent-skills/enterprise-agent-skills`,
+   then `copilot plugin install sap-abap@enterprise-agent-skills`.
+2. Run the one-time setup, which tests the connection and writes the values to a file in your
+   user profile (never into the plugin):
+   `node ~/.copilot/installed-plugins/enterprise-agent-skills/sap-abap/mcp/sap-system/launch.mjs setup`
+3. Start `copilot`, ask the test question, and allow the `sap-system` tools when asked.
+
+**OpenAI Codex, Cursor, and other Agent Plugins hosts**: install the plugin as the
+[Install](#install) section shows, run the same setup command from the folder the agent
+installed the plugin to, and restart the agent.
+
+**Gemini CLI** asks for the values when the plugin folder is installed as an extension and
+keeps the password in the system keychain.
+
+**Microsoft 365 Copilot Cowork** cannot start a local server, so the same server runs in
+HTTPS mode on a host you control and Cowork signs in with Microsoft Entra ID. Four steps,
+each explained in [docs/copilot-cowork.md](docs/copilot-cowork.md):
+
+1. Deploy the server next to your SAP system with one script: Docker, automatic TLS, port
+   443 only ([deploy/sap-system-mcp](deploy/sap-system-mcp/README.md)).
+2. Register the sign-in: an app registration in Microsoft Entra ID and an Entra SSO client
+   registration in the Teams developer portal. A trial system with demo data can use demo
+   mode instead.
+3. Build the package: `npm run package:cowork -- --mcp-url https://<host>/mcp --auth OAuthPluginVault --auth-config-id <id>`.
+4. In Cowork, open Customize > Plugins > Upload plugin, choose the ZIP, share it, and ask the
+   test question.
+
+**Claude Cowork and claude.ai** do not start the server (Cowork does not prompt for the
+values, and chat ignores local MCP servers); the skills ask you for the release instead.
 
 The server is read-only by default and sends data only to the SAP URL you configure. Your
 credentials stay on your machine, in the agent's credential store or in that file, never in
 the plugin or in this repository. Prefer an HTTPS URL; use `http://` only for a trial system
 on the same machine. The [plugin README](plugins/sap-abap/README.md#data-and-permissions)
-names the file location and the environment variables, and the server itself is in
-[plugins/sap-abap/mcp/sap-system](plugins/sap-abap/mcp/sap-system).
+names the file location and the environment variables, the server itself is in
+[plugins/sap-abap/mcp/sap-system](plugins/sap-abap/mcp/sap-system), and
+[docs/sap-mcp-servers.md](docs/sap-mcp-servers.md) compares it with other MCP servers for
+SAP systems.
 
 ## Install
 

@@ -7,6 +7,8 @@ SDK is needed. The skills call it to learn the release of the system, read exist
 look at table definitions and sample rows before they write or review code.
 
 Derived from "SAP A4H Conversational Scout" by Amit Lal (MIT), the same author.
+[docs/sap-mcp-servers.md](../../../../docs/sap-mcp-servers.md) compares it with SAP's ADT MCP
+Server and the community servers, and says when one of those is the better choice.
 
 ## What it needs
 
