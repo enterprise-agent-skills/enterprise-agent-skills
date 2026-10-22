@@ -12,7 +12,7 @@ Each skill states the SAP products, SAP_BASIS releases, and ABAP development mod
 | Publisher | Enterprise Agent Skills contributors (independent; not affiliated with SAP) |
 | Category | Development |
 | Maturity | beta |
-| Version | 0.3.0 |
+| Version | 0.3.1 |
 | License | MIT |
 
 ## Skills
