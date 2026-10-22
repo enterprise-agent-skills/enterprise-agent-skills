@@ -16,7 +16,9 @@
  *                          build; pass another GUID for a second package of the same plugin in one
  *                          tenant, for example a demo build next to a production build)
  *   --name <short name>    name shown in Cowork, up to 30 characters (default: the plugin name)
- *   --no-tools             leave out the server's tool list (see TOOLS_FILE below)
+ *   --tools                include the server's tool list (see TOOLS_FILE below); off by
+ *                          default, because Cowork does not use it and its upload validator
+ *                          rejected a package that declared it (2026-10-22)
  *
  * The package is a ZIP with manifest.json (Microsoft 365 app manifest 1.29), color.png,
  * outline.png, and one skills/<name>/ folder per skill, each with LICENSE.txt: the layout the
@@ -59,9 +61,10 @@ export const COWORK_APP_ID_NAMESPACE = "64037d54-083e-4536-a66e-fa10de075ad9";
 export const AUTH_TYPES = ["OAuthPluginVault", "None"];
 export const CONNECTOR_ID = "sap-system";
 /**
- * The server's tool list in the tools/list format, referenced from the manifest when the
- * server can be started on the build machine. Cowork discovers tools from the server and does
- * not read this file; other Microsoft 365 hosts treat it as a pinned tool list.
+ * The server's tool list in the tools/list format, included and referenced from the manifest
+ * only with --tools. Cowork discovers tools from the server and does not read this file, and
+ * its upload validator rejected a package that declared it (2026-10-22); other Microsoft 365
+ * hosts treat it as a pinned tool list.
  */
 export const TOOLS_FILE = "tools/sap-system-tools.json";
 export const ACCENT_COLOR = "#2E5C8A";
@@ -248,7 +251,7 @@ export function buildCoworkPackage({
   version,
   appId,
   shortName,
-  includeTools = true,
+  includeTools = false,
   printTools = runPrintTools,
 } = {}) {
   const url = checkMcpUrl(mcpUrl);
@@ -309,7 +312,7 @@ export function buildCoworkPackage({
   if (problems.length) throw new Error(`The skills do not meet the Cowork package rules:\n  ${problems.join("\n  ")}`);
 
   // The server's tool list, when the server can run on this machine.
-  let tools = { included: false, reason: "left out (--no-tools)", names: [] };
+  let tools = { included: false, reason: "left out (pass --tools to include it)", names: [] };
   if (includeTools) {
     const r = printTools(join(p.dir, ...LAUNCHER));
     if (r.tools) {
@@ -336,7 +339,9 @@ export function buildCoworkPackage({
     `Independent community project under the MIT License; not affiliated with SAP or Microsoft. Setup guide, privacy, and terms: ${guide}`,
   ].filter(Boolean).map((t) => String(t).trim()).join("\n\n");
   const remoteMcpServer = { mcpServerUrl: url };
-  if (tools.included) remoteMcpServer.mcpToolDescription = { file: `./${TOOLS_FILE}` };
+  // Without the "./" prefix: Cowork's validator reported "./tools/... not found" for a file
+  // that was in the ZIP, so the plain ZIP entry path is used.
+  if (tools.included) remoteMcpServer.mcpToolDescription = { file: TOOLS_FILE };
   remoteMcpServer.authorization = referenceId ? { type: authType, referenceId } : { type: authType };
   const manifest = {
     $schema: MANIFEST_SCHEMA_URL,
@@ -368,7 +373,7 @@ if (isMain) {
   const args = parseArgs(process.argv.slice(2));
   const str = (v) => (typeof v === "string" ? v : undefined);
   if (args.help || args.h) {
-    console.log("Usage: node scripts/cowork-package.mjs --mcp-url https://<host>/mcp --auth OAuthPluginVault --auth-config-id <id> [--out <dir>] [--plugin <name>] [--version x.y.z] [--app-id <guid>] [--name <short name>] [--no-tools]\n       node scripts/cowork-package.mjs --mcp-url https://<host>/mcp/<secret> --auth None [...]   (demo mode)\nSee docs/copilot-cowork.md.");
+    console.log("Usage: node scripts/cowork-package.mjs --mcp-url https://<host>/mcp --auth OAuthPluginVault --auth-config-id <id> [--out <dir>] [--plugin <name>] [--version x.y.z] [--app-id <guid>] [--name <short name>] [--tools]\n       node scripts/cowork-package.mjs --mcp-url https://<host>/mcp/<secret> --auth None [...]   (demo mode)\nSee docs/copilot-cowork.md.");
     process.exit(0);
   }
   try {
@@ -381,7 +386,7 @@ if (isMain) {
       version: str(args.version),
       appId: str(args["app-id"]),
       shortName: str(args.name),
-      includeTools: !args["no-tools"],
+      includeTools: Boolean(args.tools),
     });
     const c = result.manifest.agentConnectors[0].toolSource.remoteMcpServer;
     const shown = c.authorization.type === "None" ? `${new URL(c.mcpServerUrl).origin}/<secret path not shown>` : c.mcpServerUrl;
