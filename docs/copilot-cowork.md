@@ -17,6 +17,21 @@ server come from its README and from the deployment README in this repository. P
 are trademarks of their owners; this is an independent project (see
 [Terms of use](#terms-of-use)).
 
+## Steps at a glance
+
+1. **Deploy the server** on a Linux host that can reach your SAP system, with Docker and a
+   public DNS name ([Step 1](#step-1-deploy-the-server)). One script installs it with
+   automatic TLS; only port 443 must be open. About 15 minutes.
+2. **Register the sign-in**: one app registration in Microsoft Entra ID and one Microsoft
+   Entra SSO client registration in the Teams developer portal, then put the IDs into the
+   server's env file ([Step 2](#step-2-register-the-connector-sign-in-in-microsoft-entra-id)).
+   Needs the Application Developer role. About 20 minutes. For a trial system with demo data
+   you can skip this step and use [Demo mode](#demo-mode).
+3. **Build the package** with `npm run package:cowork` ([Step 3](#step-3-build-the-package)).
+   One command.
+4. **Upload it in Cowork** under Customize > Plugins > Upload plugin, share it, and ask "Which
+   SAP release is my system?" ([Step 4](#step-4-upload-in-cowork-and-test)).
+
 ## What you get
 
 The package contains two things.
