@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "sap-system": {
+      "command": "node",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/mcp/sap-system/launch.mjs",
+        "serve"
+      ],
+      "env": {
+        "SAP_URL": "${user_config.sap_url}",
+        "SAP_USER": "${user_config.sap_user}",
+        "SAP_PASSWORD": "${user_config.sap_password}",
+        "SAP_CLIENT": "${user_config.sap_client}",
+        "SAP_LANGUAGE": "${user_config.sap_language}"
+      }
+    }
+  }
+}

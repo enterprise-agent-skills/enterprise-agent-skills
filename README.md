@@ -38,6 +38,36 @@ leave it out, because what counts as valid ABAP depends on the release. [Install
 covers the other agents and plugins, and
 [Download skills as ZIP files](#download-skills-as-zip-files) covers the release downloads.
 
+## Connect the SAP skills to your system
+
+The `sap-abap` plugin bundles `sap-system`, a read-only MCP server that connects to your own
+SAP ABAP system (SAP ECC, SAP S/4HANA, or the ABAP Platform trial) over ADT REST and OData v2
+with your SAP user. With the connection, the skills read the installed release and support
+package from the system instead of asking you for it, and they look up real objects: tables
+and their fields, source code, packages, and OData services. The server runs on your machine
+and needs Python 3.10 or later with the `mcp` and `httpx` packages; its launcher prints the
+install command when they are missing.
+
+How each agent gets the connection details (SAP URL, user, password, client, and language):
+
+- Claude Code asks for them when you enable the plugin and keeps the password in its secure
+  credential store.
+- Gemini CLI asks for them when the plugin folder is installed as an extension.
+- Claude Cowork and claude.ai do not start the server: Cowork does not prompt for the values,
+  and chat ignores local MCP servers. The skills ask you for the release instead.
+- GitHub Copilot CLI, OpenAI Codex, Cursor, and other Agent Plugins hosts do not prompt: run
+  `node <plugin folder>/mcp/sap-system/launch.mjs setup` once. It tests the connection and
+  writes the values to a file in your user profile, outside the plugin folder.
+- Microsoft 365 Copilot Cowork cannot start a local server. [docs/copilot-cowork.md](docs/copilot-cowork.md)
+  explains the hosted variant of the same server.
+
+The server is read-only by default and sends data only to the SAP URL you configure. Your
+credentials stay on your machine, in the agent's credential store or in that file, never in
+the plugin or in this repository. Prefer an HTTPS URL; use `http://` only for a trial system
+on the same machine. The [plugin README](plugins/sap-abap/README.md#data-and-permissions)
+names the file location and the environment variables, and the server itself is in
+[plugins/sap-abap/mcp/sap-system](plugins/sap-abap/mcp/sap-system).
+
 ## Install
 
 <!-- BEGIN GENERATED: plugins (edit with npm run build) -->
@@ -218,7 +248,9 @@ without a file marker are not parsed. `line_exists( )` passes the offline check 
 | GitHub Copilot in VS Code, Cursor, Gemini CLI, others | `npx skills add`, plus `.cursor-plugin` and `gemini-extension.json` manifests | Generated; not yet verified end to end |
 | OpenAI Codex | Agent Plugins `plugin.json`, `.agents/plugins/marketplace.json` | Generated; not yet verified end to end |
 
-Details, sources, and the verification plan are in [docs/platform-compatibility.md](docs/platform-compatibility.md).
+Details, sources, and the verification plan are in [docs/platform-compatibility.md](docs/platform-compatibility.md),
+including how each platform starts and configures the bundled `sap-system` MCP server
+([Bundled MCP server](docs/platform-compatibility.md#bundled-mcp-server)).
 
 ## Repository layout
 
@@ -226,10 +258,11 @@ Details, sources, and the verification plan are in [docs/platform-compatibility.
 plugins/<plugin>/plugin.yaml            Plugin source of truth (edit this)
 plugins/<plugin>/skills/<skill>/        Agent Skills: SKILL.md plus references/, scripts/, assets/
 plugins/<plugin>/agents/                Optional custom agents (*.agent.md)
+plugins/<plugin>/mcp/<server>/          MCP servers published from this repository (sap-abap: sap-system)
 plugins/<plugin>/*.json, .*-plugin/     Generated platform manifests (do not edit)
 tests/scenarios/<skill>/                acceptance-criteria.md, scenarios.yaml, generated vally/eval.yaml
 tests/harness/                          Mock evaluator and language validators
-mcp/servers.yaml                        Curated MCP servers that plugins may bundle or document
+mcp/servers.yaml                        Curated MCP servers that plugins may bundle or document, including the bundled ones
 config/                                 SAP environment registry, ABAP release features, domain and security allowlists
 schemas/                                JSON schemas, including vendored Agent Plugins schemas
 LICENSES/                               Full texts of third-party licenses (Apache-2.0); see ATTRIBUTION.md

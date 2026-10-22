@@ -36,11 +36,9 @@ metadata:
 BAPIs, RFC, IDocs, and SAP Gateway OData V2 services are how customer-managed SAP systems
 exchange data. What makes them reliable is transaction control: who commits, what forms one
 logical unit of work (LUW), and what happens when the partner system is down. The hard
-technical constraint is the release. `WAIT FOR ASYNCHRONOUS TASKS` does not exist on ECC 6.0
-EHP6, `SELECT ... OFFSET` does not exist before 7.51, and the Gateway framework on an IW_BEP
-add-on is older than SAP_GWFND. Where SAP runs (on premises, on Azure, AWS, or Google Cloud
-virtual machines, or in SAP's private cloud) changes host names and network routes in SM59,
-never the ABAP.
+technical constraint is the release: `WAIT FOR ASYNCHRONOUS TASKS` does not exist on ECC 6.0
+EHP6, and `SELECT ... OFFSET` not before 7.51. Where SAP runs (on premises, on Azure, AWS, or
+Google Cloud VMs, or in SAP's private cloud) changes SM59 hosts and routes, never the ABAP.
 
 Reference files:
 
@@ -55,21 +53,35 @@ Reference files:
 
 ## Step 1: Pin down the target system
 
+If tools named `sap_*` are available (the sap-system MCP server of this plugin, or any SAP MCP
+server with the same tool names), call `sap_connection_info` and then `sap_system_info` before
+you ask. Take the SAP_BASIS release and support package (`release` 754 with `support_package`
+0003 is 7.54 SP03), S4CORE or SAP_APPL, and the product hint from the result, and say in the
+answer that the target came from the connected system, with the URL and client from
+`sap_connection_info`. Ask only for what the tools cannot tell: the database when `database`
+is null, the language version of the object, and items 2 to 4 below. When a tool returns
+`ok: false` with a setup message, tell the user how to finish the setup (Claude Code: enable
+the plugin and enter the connection details when asked; Copilot CLI and other hosts: run the
+setup command named in the error) and continue with the questions below. Without `sap_*`
+tools, say once that the plugin's sap-system server can supply the release from a connected
+system, then ask.
+
 Ask for anything you cannot see. Do not assume the newest release.
 
-1. **Product and release**: ECC 6.0 with enhancement package, NetWeaver AS ABAP release, or
-   S/4HANA release (for example 1909 or 2023).
-2. **SAP_BASIS release and support package**: System > Status > Component information. On
-   SAP_BASIS 7.40 the support package decides whether `WAIT FOR ASYNCHRONOUS TASKS` (SP02) or
-   `INTO` as the last `SELECT` clause (SP08) is available.
-3. **Gateway components** for SEGW work, in the same list: SAP_GWFND (standard from 7.40) or
+1. **Product, release, SAP_BASIS, and support package**: ECC 6.0 with enhancement package,
+   NetWeaver AS ABAP, or S/4HANA (for example 1909 or 2023); SAP_BASIS from System > Status >
+   Component information. On 7.40 the support package decides whether
+   `WAIT FOR ASYNCHRONOUS TASKS` (SP02) or `INTO` as the last `SELECT` clause (SP08) exists.
+2. **Gateway components** for SEGW work, in the same list: SAP_GWFND (standard from 7.40) or
    the IW_BEP and IW_FND add-ons. Ask whether the service runs embedded or on a hub system.
-4. **Partner**: another ABAP system (RFC, ALE), a non-SAP system through an EDI subsystem or
+3. **Partner**: another ABAP system (RFC, ALE), a non-SAP system through an EDI subsystem or
    middleware (IDoc file or XML port), or an HTTP client such as an SAP Fiori app (OData).
-5. **Delivery guarantee**: does the caller need the answer now, exactly once, or exactly once
+4. **Delivery guarantee**: does the caller need the answer now, exactly once, or exactly once
    in order? How many calls per hour, and how large?
-6. **Where SAP runs** matters for SM59 host names, SAProuter strings, and firewalls. It never
-   changes the code, so ECC on Azure virtual machines gets the same ABAP as ECC on premises.
+
+With a connected system, `sap_search_objects` and `sap_read_source` show a BAPI, function
+module, or DPC class as it is in the system, and `sap_odata_list_services` the registered
+OData services. The server is read-only: never claim to have changed or tested anything.
 
 ## Step 2: Choose the technique
 
@@ -147,9 +159,6 @@ ENDIF.
   the function group or module, not what the caller may do with the data.
 - Offer a `TESTRUN` parameter for functions that write.
 
-The complete function module, with the program that calls it, is in
-[references/bapi-and-rfc.md](references/bapi-and-rfc.md).
-
 ## Step 5: Call other systems with RFC
 
 ### Synchronous RFC
@@ -207,9 +216,6 @@ The complete function module, with the program that calls it, is in
 - bgRFC needs configuration in SBGRFCCONF, including a supervisor destination, and
   authorization object S_BGRFC. Outbound bgRFC destinations are normal SM59 destinations.
 
-The sRFC samples are in [references/bapi-and-rfc.md](references/bapi-and-rfc.md); aRFC, tRFC,
-qRFC, and bgRFC are in [references/async-rfc-and-bgrfc.md](references/async-rfc-and-bgrfc.md).
-
 ## Step 6: Secure RFC connections
 
 - Keep logon data and trust settings in the SM59 destination. Never put a user, password, or
@@ -255,9 +261,6 @@ qRFC, and bgRFC are in [references/async-rfc-and-bgrfc.md](references/async-rfc-
   (BD50), choose the fields (BD52), and schedule BD21 (report RBDMIDOC) per message type and
   BD22 (RBDCPCLR) to delete processed pointers.
 
-The outbound program, the inbound function module, the registration steps, and the status
-values are in [references/idoc-ale-edi.md](references/idoc-ale-edi.md).
-
 ## Step 8: Build OData V2 services with SEGW
 
 - SEGW generates a model provider class (MPC) and a data provider class (DPC), each with an
@@ -297,9 +300,6 @@ values are in [references/idoc-ale-edi.md](references/idoc-ale-edi.md).
   plugin does not cover RAP on those releases, and build a SEGW OData V2 service only if the
   user chooses it. ECC has no RAP; use SEGW OData V2 there. Code-based OData V4 is not covered.
 
-The complete `GET_ENTITYSET` redefinition and the `$batch` rules are in
-[references/gateway-odata-v2.md](references/gateway-odata-v2.md).
-
 ## Step 9: Monitor and reprocess
 
 | Area | Transaction | What to look at |
@@ -335,8 +335,8 @@ The references list the URLs, checked on 2026-10-15.
 
 ## Output format
 
-1. State the target you assumed: product, release, SAP_BASIS and support package, database,
-   Gateway components where relevant, and that the hosting does not change the code.
+1. State the target (read from the connected system, with URL and client, or assumed):
+   product, release, SAP_BASIS and support package, database, and Gateway components.
 2. Return each object in its own code block starting with an abapGit file marker, for example
    `* file: src/zfa_order_upload.prog.abap`, `* file: src/zfa_order_api.fugr.z_fa_order_create.abap`,
    or `* file: src/zcl_zfa_product_dpc_ext.clas.abap`. For a function module, show the

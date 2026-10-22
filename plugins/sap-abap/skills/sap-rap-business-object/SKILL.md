@@ -5,7 +5,8 @@ description: >-
   table, CDS view entities, behavior definition, behavior pool, projection layer, service
   definition, and service binding. USE FOR: creating or extending a transactional RAP business
   object, adding validations, determinations, actions, or feature control, enabling draft,
-  fixing ETag and lock settings, exposing a business object as an OData V4 UI service.
+  fixing ETag and lock settings, exposing a business object as an OData V4 UI service,
+  reviewing an existing RAP stack, including one read from a connected system.
   DO NOT USE FOR: RAP on S/4HANA 1909 to 2021 (this code needs 7.57; not covered by this
   plugin), ECC or Standard ABAP reports, Dynpro, or ALV (use sap-abap-standard), BAdI
   implementations (use sap-abap-enhancements), SEGW OData services (use sap-abap-integration),
@@ -38,6 +39,19 @@ review an existing stack against the same rules. The complete reference implemen
 causes are in [references/troubleshooting.md](references/troubleshooting.md).
 
 ## Confirm before writing code
+
+If tools named `sap_*` are available (the sap-system MCP server of this plugin, or any SAP MCP
+server with the same tool names), call `sap_connection_info` and then `sap_system_info` before
+you ask. The product hint and the SAP_BASIS release answer item 1 (`release` 757 is 7.57 and
+S/4HANA 2022, 758 is 7.58 and 2023); say in the answer that the target came from the
+connected system, with the URL and client. Ask only for what the tools cannot tell: items 2 to
+5 and the language version of the package. When a tool returns `ok: false` with a setup
+message, tell the user how to finish the setup (Claude Code: enable the plugin and enter the
+connection details when asked; Copilot CLI and other hosts: run the setup command named in
+the error) and ask instead. Without `sap_*` tools, say once that the plugin's sap-system
+server can supply the release from a connected system. To review an existing stack, read it
+with `sap_list_package` and `sap_read_source` and its table with `sap_describe_table`; the
+server is read-only, so never claim to have activated or published anything.
 
 Ask for anything that is not already clear. Wrong answers here cause rework later.
 
@@ -170,7 +184,8 @@ Below S/4HANA 2022 this skill does not apply: ABAP Cloud is not available there 
 When you generate the stack, return each object as a separate code block that starts with a
 file marker line using abapGit file names, so reviewers and tools can split it:
 `* file: src/zbp_r_travel.clas.abap` for ABAP and `// file: src/zr_travel.ddls.asddls` for CDS.
-List any assumption you made (names, release, authorization approach) after the code.
+List any assumption you made (names, release, authorization approach) after the code, and say
+whether the release came from the connected system (URL and client).
 
 ## Sources
 

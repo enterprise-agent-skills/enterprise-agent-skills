@@ -14,11 +14,13 @@ includes a copy as `LICENSE.txt`.
 |------|--------|---------|-------|
 | `tests/fixtures/cloudification/objectReleaseInfo-sample.json` | [SAP/abap-atc-cr-cv-s4hc](https://github.com/SAP/abap-atc-cr-cv-s4hc), commit `60cb748` | Apache-2.0 | Seven unmodified entries used as a test fixture. Copyright notice: [tests/fixtures/cloudification/README.md](tests/fixtures/cloudification/README.md) |
 | `schemas/vendor/agent-plugins/1.0.0/` | [agentplugins/agent-plugins-spec](https://github.com/agentplugins/agent-plugins-spec), commit `ff8ab5e` | Apache-2.0 | Two unmodified JSON schemas. Copyright notice: [schemas/vendor/agent-plugins/NOTICE.md](schemas/vendor/agent-plugins/NOTICE.md) |
+| `schemas/vendor/microsoft-365/app-manifest-v1.29.json` | [OfficeDev/microsoft-teams-app-schema](https://github.com/OfficeDev/microsoft-teams-app-schema), tag `v1.29` (commit `a2a2ebc`) | MIT | One unmodified JSON schema, the Microsoft 365 app manifest v1.29, used by `scripts/cowork-package.mjs` to check Copilot Cowork plugin packages. Copyright notice and license text: [schemas/vendor/microsoft-365/LICENSE](schemas/vendor/microsoft-365/LICENSE); details in [schemas/vendor/microsoft-365/NOTICE.md](schemas/vendor/microsoft-365/NOTICE.md) |
 
 The full Apache License 2.0 text is in [LICENSES/Apache-2.0.txt](LICENSES/Apache-2.0.txt),
-downloaded unchanged from https://www.apache.org/licenses/LICENSE-2.0.txt on 2026-10-21.
-Neither upstream repository has a NOTICE file (checked 2026-10-21), so there is no NOTICE text
-to pass on.
+downloaded unchanged from https://www.apache.org/licenses/LICENSE-2.0.txt on 2026-10-21. The
+Microsoft schema's MIT license text, with Microsoft's copyright line, is the `LICENSE` file next
+to the schema. None of the upstream repositories has a NOTICE file (checked 2026-10-21, and
+2026-10-22 for the Microsoft schema), so there is no NOTICE text to pass on.
 
 None of these files is in `plugins/`, so the plugin and skill folders, and the release archives
 built from those folders, do not contain them.

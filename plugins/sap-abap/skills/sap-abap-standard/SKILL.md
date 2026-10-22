@@ -57,6 +57,18 @@ Reference files:
 
 ## Step 1: Pin down the target system
 
+If tools named `sap_*` are available (the sap-system MCP server of this plugin, or any SAP MCP
+server with the same tool names), call `sap_connection_info` and then `sap_system_info` before
+you ask. Take the SAP_BASIS release and support package (`release` 754 with `support_package`
+0003 is 7.54 SP03), S4CORE or SAP_APPL, and the product hint from the result, and say in the
+answer that the target came from the connected system, with the URL and client from
+`sap_connection_info`. Ask only for what the tools cannot tell: the database when `database`
+is null, and the language version of the object. When a tool returns `ok: false` with a setup
+message, tell the user how to finish the setup (Claude Code: enable the plugin and enter the
+connection details when asked; Copilot CLI and other hosts: run the setup command named in
+the error) and continue with the questions below. Without `sap_*` tools, say once that the
+plugin's sap-system server can supply the release from a connected system, then ask.
+
 Ask for anything you cannot see. Do not assume the newest release.
 
 1. **Product and release**: ECC 6.0 with enhancement package, NetWeaver AS ABAP release, or
@@ -71,6 +83,12 @@ Ask for anything you cannot see. Do not assume the newest release.
    this skill only for Standard ABAP.
 5. **Where SAP runs** (on premises, Azure, AWS, Google Cloud) is useful for operations
    questions but never changes the ABAP you write.
+
+With a connected system, read before you write: `sap_search_objects` and `sap_read_source`
+show the current source of a program or class, `sap_list_package` lists a package, and
+`sap_describe_table` and `sap_read_table` show a table's definition and sample rows, which
+helps when you troubleshoot a dump or a slow `SELECT`. The server is read-only: never claim to
+have changed, activated, or transported anything in the system.
 
 ## Step 2: Choose the syntax level
 
@@ -154,10 +172,11 @@ Details, including which test tools exist on which release, are in
 
 ## Output format
 
-1. State the target you assumed: product, release, SAP_BASIS and support package, database.
+1. State the target: product, release, SAP_BASIS and support package, database, and whether
+   you read it from the connected system (URL and client) or assumed it.
 2. Return each object in its own code block starting with an abapGit file marker, for example
    `* file: src/zfa_sales_orders.prog.abap` or `* file: src/zcl_fa_pricing.clas.abap`.
 3. List the DDIC objects, authorization objects, messages, and transport steps the user must
    create manually.
-4. Name what could not be verified without the system: syntax check (Ctrl+F2), activation,
-   ATC, and unit test runs.
+4. Name what could not be verified without the system or through the read-only connection:
+   syntax check (Ctrl+F2), activation, ATC, and unit test runs.

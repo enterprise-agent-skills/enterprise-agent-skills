@@ -1,7 +1,7 @@
 {
   "name": "sap-abap",
   "displayName": "ABAP development skills for SAP S/4HANA, SAP ECC, and SAP BTP",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Skills for SAP ABAP development across customer-managed and cloud systems: Standard ABAP on SAP ECC 6.0, SAP NetWeaver AS ABAP, and SAP S/4HANA (on premises or on Azure, AWS, or Google Cloud VMs), enhancements and integration, plus ABAP Cloud with RAP and clean core assessments.",
   "author": {
     "name": "Enterprise Agent Skills contributors",
@@ -22,5 +22,38 @@
     "idoc",
     "odata",
     "clean-core"
-  ]
+  ],
+  "userConfig": {
+    "sap_url": {
+      "type": "string",
+      "title": "SAP system URL",
+      "description": "ICM URL of the ABAP system, for example https://host:44300 or http://localhost:50000 for the trial. Prefer HTTPS.",
+      "required": true
+    },
+    "sap_user": {
+      "type": "string",
+      "title": "SAP user",
+      "description": "User name for the ABAP system. A read-only user is enough.",
+      "required": true
+    },
+    "sap_password": {
+      "type": "string",
+      "title": "SAP password",
+      "description": "Password of that user. Stored in the agent's secure credential store, never in the plugin.",
+      "required": true,
+      "sensitive": true
+    },
+    "sap_client": {
+      "type": "string",
+      "title": "SAP client",
+      "description": "Client number, for example 001.",
+      "default": "001"
+    },
+    "sap_language": {
+      "type": "string",
+      "title": "Logon language",
+      "description": "Two-letter logon language, for example EN.",
+      "default": "EN"
+    }
+  }
 }

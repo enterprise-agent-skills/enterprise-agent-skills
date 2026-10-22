@@ -6,12 +6,13 @@ description: >-
   released APIs. USE FOR: reviewing custom code before an S/4HANA Cloud or ABAP Cloud migration,
   choosing released APIs for new ABAP Cloud classes, replacing direct reads of SAP tables such
   as VBAK, MARA, BKPF, or KNA1 with released CDS views, explaining ATC findings from the "Usage
-  of APIs" or cloud readiness checks, producing a remediation list for a package. DO NOT USE
-  FOR: building new RAP business objects (use sap-rap-business-object), writing or fixing
-  Standard ABAP that stays on ECC or classic S/4HANA development (use sap-abap-standard),
-  S/4HANA conversion findings from S4HANA_READINESS (use sap-abap-standard), clean core levels
-  of exits and BAdIs (use sap-abap-enhancements), SAP Basis, upgrade, or SUM tasks, functional
-  configuration, or performance tuning.
+  of APIs" or cloud readiness checks, producing a remediation list for a package, including
+  one read from a connected system. DO NOT USE FOR: building new RAP business objects (use
+  sap-rap-business-object), writing or fixing Standard ABAP that stays on ECC or classic
+  S/4HANA development (use sap-abap-standard), S/4HANA conversion findings from
+  S4HANA_READINESS (use sap-abap-standard), clean core levels of exits and BAdIs (use
+  sap-abap-enhancements), SAP Basis, upgrade, or SUM tasks, functional configuration, or
+  performance tuning.
 license: MIT
 compatibility: >-
   Custom ABAP code from SAP ECC or SAP S/4HANA, or ABAP Cloud code on SAP BTP ABAP environment.
@@ -60,11 +61,26 @@ successor in any current file; treat it as not released for ABAP Cloud. The clas
 file uses `classicAPI` and `noAPI`. An object missing from the file is not released; treat it
 like `notToBeReleased` without a successor.
 
+If tools named `sap_*` are available (the sap-system MCP server of this plugin, or any SAP MCP
+server with the same tool names), call `sap_connection_info` and then `sap_system_info` before
+you ask where the code runs: the product hint and the SAP_BASIS release (`release` 758 is 7.58,
+S/4HANA 2023) pick the row in the table above, and S4CORE or SAP_APPL confirms S/4HANA or
+ECC. Say in the report that the target came from the connected system, with the URL and
+client. Ask only for what the tools cannot tell: the target system of a migration, the
+feature pack stack when the file name needs it, and the language version of the objects. When
+a tool returns `ok: false` with a setup message, tell the user how to finish the setup (Claude
+Code: enable the plugin and enter the connection details when asked; Copilot CLI and other
+hosts: run the setup command named in the error) and ask instead. Without `sap_*` tools, say
+once that the plugin's sap-system server can supply this from a connected system.
+
 ## Workflow
 
 1. **Inventory.** List every SAP object the code touches: tables and views in `SELECT`
    statements, function modules in `CALL FUNCTION`, classes and interfaces, BAdIs, and includes.
-   Ignore objects in the customer namespace (Z, Y, or a registered namespace).
+   Ignore objects in the customer namespace (Z, Y, or a registered namespace). With a
+   connected system, read the code with `sap_read_source`, list the package with
+   `sap_list_package`, and check with `sap_describe_table` whether a name is an SAP table or
+   view; the server is read-only, so never claim to have changed or activated anything there.
 2. **Look up states.** Run the bundled script for the objects you found:
 
    ```bash
@@ -92,7 +108,7 @@ like `notToBeReleased` without a successor.
    check "Usage of Released APIs (Cloudification Repository)" for cloud targets, or
    "Usage of APIs" for clean core in private cloud and on-premise (standard in S/4HANA 2025,
    SAP Note 3565942 on 2023; for ECC and older releases, run it remotely from ATC on SAP BTP
-   or from a central ATC system). Recommend running it.
+   or from a central ATC system). Recommend running it; the sap-system server has no ATC tool.
 
 ## Verified examples
 
@@ -156,4 +172,5 @@ BTP with check variant `ABAP_CLEAN_CORE_READINESS`, or from a central ATC system
 2. Rewritten code, one code block per object, each starting with an abapGit file marker such
    as `* file: src/zcl_sales_report.clas.abap`.
 3. Open questions, for example objects without a successor.
-4. The data source used: file name and retrieval date.
+4. The data source used: file name and retrieval date, and the connected system (URL and
+   client) when the target came from it.

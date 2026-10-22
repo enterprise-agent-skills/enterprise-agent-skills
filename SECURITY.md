@@ -18,6 +18,9 @@ reports within five working days and agree on a fix and disclosure timeline with
 - Bundled scripts that download and execute code, send data to unexpected hosts, or modify
   files outside their stated scope.
 - MCP server configurations that point to an untrusted or unpinned package.
+- A bundled MCP server that sends data to any host other than the one the user configured,
+  changes the target system while in its read-only mode, stores credentials inside the plugin
+  folder, or shows credentials in tool results.
 - Credentials or personal data committed to the repository.
 - Weaknesses in the validation tooling that let unsafe content pass the security checks.
 
@@ -28,11 +31,30 @@ reports within five working days and agree on a fix and disclosure timeline with
 | Secret patterns, hidden Unicode, pipe-to-shell, TLS bypass, destructive commands, injection phrasing | `npm run security` on every pull request |
 | URL domain allowlist for skills | `vally lint --known-domains config/known-domains.txt` |
 | No hooks or top-level `bin/` folders in plugins | `npm run validate` |
-| Only vendor-published, pinned MCP servers; only credential-free servers may be bundled | `mcp/servers.yaml` and `npm run validate` |
+| MCP servers only from the registry: vendor-published and pinned, bundled only without credentials; or published from this repository, read-only by default, with credentials taken only from the agent's prompt or a user-owned config file outside the plugin | `mcp/servers.yaml` and `npm run validate` (see [Bundled MCP servers](#bundled-mcp-servers)) |
 | Bundled scripts listed for mandatory human review | security report and the pull request template |
 | Dependency review, CodeQL, OpenSSF Scorecard | `.github/workflows/security.yml`, `scorecard.yml` |
 | Least-privilege workflow tokens, actions pinned to commit SHAs | all workflows |
 | Release ZIP files built by a job with a read-only token; the job that publishes runs no repository code; SHA-256 checksums and signed build provenance attached | `.github/workflows/release.yml` |
+
+## Bundled MCP servers
+
+A plugin may bundle an MCP server in two cases, both recorded in `mcp/servers.yaml` and
+enforced by `npm run validate`:
+
+- A vendor-published server that needs no credentials, pinned to an exact version.
+- A server published from this repository, with its code under `plugins/<plugin>/mcp/<server>/`
+  and `bundled_from_plugin` naming that plugin. Such a server is read-only by default, connects
+  only to the system the user configures, and takes credentials only from the agent's own
+  prompt (Claude Code's `userConfig`, Gemini CLI's extension settings) or from a config file
+  the user owns outside the plugin folder, written by the server's setup command. The
+  repository and the generated configuration files hold placeholders, never values. Only the
+  plugin that holds the code may bundle the server.
+
+A server published from this repository is reviewed like a bundled script: every file under
+`mcp/` passes the security scan, the validator rejects a server folder without a registry
+entry, and reviewers read the server in full before merge, checking the hosts it talks to, the
+HTTP verbs it allows in read-only mode, and what its tool results can contain.
 
 ## Hooks
 

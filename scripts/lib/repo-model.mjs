@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
-import { REPO_ROOT, PATHS, OWNER_PLACEHOLDER } from "./constants.mjs";
+import { REPO_ROOT, PATHS, OWNER_PLACEHOLDER, PLUGIN_MCP_DIR } from "./constants.mjs";
 import { exists, isDir, listDirs, readText, rel, walkFiles } from "./fsutil.mjs";
 import { parseFrontmatter } from "./frontmatter.mjs";
 
@@ -63,8 +63,11 @@ function loadPlugin(dirName, loadErrors) {
           return { file: rel(f), fileName: f.split(/[\\/]/).pop(), ...parsed };
         })
     : [];
+  // Folders of MCP servers published from this repository; each must be registered in
+  // mcp/servers.yaml with bundled_from_plugin set to this plugin (checked in plugin-checks).
+  const mcpDirs = listDirs(join(dir, PLUGIN_MCP_DIR));
 
-  return { dirName, dir, relDir: `${PATHS.plugins}/${dirName}`, sourcePath, source, skills, agents };
+  return { dirName, dir, relDir: `${PATHS.plugins}/${dirName}`, sourcePath, source, skills, agents, mcpDirs };
 }
 
 function loadSkill(pluginDir, skillDir, loadErrors) {

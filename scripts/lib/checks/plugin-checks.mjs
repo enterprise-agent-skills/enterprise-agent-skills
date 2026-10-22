@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { exists, isDir } from "../fsutil.mjs";
 import { validateSchema } from "../schema.mjs";
 import { taxonomy } from "../repo-model.mjs";
-import { AGENT_PLUGINS_MCP_SCHEMA, AGENT_PLUGINS_PLUGIN_SCHEMA } from "../constants.mjs";
+import { AGENT_PLUGINS_MCP_SCHEMA, AGENT_PLUGINS_PLUGIN_SCHEMA, PLUGIN_MCP_DIR } from "../constants.mjs";
 
 const MATURITY_ORDER = ["deprecated", "experimental", "beta", "stable"];
 
@@ -31,11 +31,7 @@ export function checkPlugins(model, generated, findings) {
       findings.warn("PLUGIN_MATURITY_HIGHER", `Plugin maturity '${s.maturity}' is higher than its least mature skill ('${lowest}').`, { file });
     }
 
-    for (const id of s.mcp_servers ?? []) {
-      const server = registry[id];
-      if (!server) findings.error("PLUGIN_MCP_UNKNOWN", `MCP server '${id}' is not in mcp/servers.yaml.`, { file });
-      else if (server.bundle_policy !== "bundle") findings.error("PLUGIN_MCP_NOT_BUNDLABLE", `MCP server '${id}' has bundle_policy '${server.bundle_policy}' and may only be documented, not bundled.`, { file });
-    }
+    checkPluginMcp(plugin, registry, findings);
 
     // Layout rules that protect users on every platform.
     if (isDir(join(plugin.dir, "hooks"))) findings.error("PLUGIN_HOOKS_NOT_ALLOWED", "Plugins may not ship hooks until the hook review policy in SECURITY.md is implemented.", { file: `${plugin.relDir}/hooks` });
@@ -44,6 +40,43 @@ export function checkPlugins(model, generated, findings) {
 
     for (const agent of plugin.agents) checkAgent(agent, findings);
     checkGeneratedManifests(plugin, generated, findings);
+  }
+}
+
+/**
+ * MCP servers a plugin bundles. A server may be bundled when the registry allows it, and a
+ * server that needs credentials only when it is published from this very plugin (its code is
+ * in the plugin folder, it is read-only by default, and the agent or the setup command asks
+ * the user for the credentials). Server code under mcp/ must be registered, so nothing ships
+ * without the registry's review record.
+ */
+function checkPluginMcp(plugin, registry, findings) {
+  const s = plugin.source;
+  const file = plugin.sourcePath;
+  const userConfigKeys = new Map();
+  for (const id of s.mcp_servers ?? []) {
+    const server = registry[id];
+    if (!server) {
+      findings.error("PLUGIN_MCP_UNKNOWN", `MCP server '${id}' is not in mcp/servers.yaml.`, { file });
+      continue;
+    }
+    if (server.bundle_policy !== "bundle") {
+      findings.error("PLUGIN_MCP_NOT_BUNDLABLE", `MCP server '${id}' has bundle_policy '${server.bundle_policy}' and may only be documented, not bundled.`, { file });
+    } else if (server.bundled_from_plugin && server.bundled_from_plugin !== s.name) {
+      findings.error("PLUGIN_MCP_FOREIGN_BUNDLE", `MCP server '${id}' is published from plugin '${server.bundled_from_plugin}' and may be bundled only there; its launcher is not in this plugin folder.`, { file });
+    } else if (server.auth !== "none" && server.bundled_from_plugin !== s.name) {
+      findings.error("PLUGIN_MCP_CREDENTIALS", `MCP server '${id}' needs credentials (auth '${server.auth}'). A plugin may bundle such a server only when the server is published from the plugin itself and read-only by default.`, { file });
+    }
+    for (const key of Object.keys(server.user_config ?? {})) {
+      if (userConfigKeys.has(key)) findings.error("PLUGIN_USER_CONFIG_DUPLICATE", `user_config key '${key}' is declared by MCP servers '${userConfigKeys.get(key)}' and '${id}'; keys must be unique within a plugin.`, { file });
+      userConfigKeys.set(key, id);
+    }
+  }
+  for (const dir of plugin.mcpDirs ?? []) {
+    const registered = Object.values(registry).some((m) => m.bundled_from_plugin === s.name && String(m.plugin_path ?? "").startsWith(`${PLUGIN_MCP_DIR}/${dir}/`));
+    if (!registered) {
+      findings.error("PLUGIN_MCP_DIR_UNREGISTERED", `${plugin.relDir}/${PLUGIN_MCP_DIR}/${dir}/ holds server code that mcp/servers.yaml does not list as bundled from this plugin. Register it with bundled_from_plugin: ${s.name}, or remove it.`, { file: `${plugin.relDir}/${PLUGIN_MCP_DIR}/${dir}` });
+    }
   }
 }
 
@@ -68,11 +101,22 @@ function checkGeneratedManifests(plugin, generated, findings) {
     [`${base}/.cursor-plugin/plugin.json`, "platform/cursor-plugin.schema.json"],
     [`${base}/gemini-extension.json`, "platform/gemini-extension.schema.json"],
     [`${base}/mcp.json`, AGENT_PLUGINS_MCP_SCHEMA],
+    [`${base}/.mcp.json`, "platform/claude-mcp.schema.json"],
   ];
   for (const [path, schema] of checks) {
     if (!generated.has(path)) continue;
     const data = JSON.parse(generated.get(path));
     for (const err of validateSchema(schema, data)) findings.error("GENERATED_MANIFEST_SCHEMA", `${err} (schema ${schema})`, { file: path });
+  }
+  // Claude Code drops a server whose ${user_config.KEY} names an option the manifest does not
+  // declare (claude plugin validate reports it too), so the two generated files must agree.
+  const claudeMcp = generated.get(`${base}/.mcp.json`);
+  if (claudeMcp) {
+    const manifest = JSON.parse(generated.get(`${base}/.claude-plugin/plugin.json`) ?? "{}");
+    const declared = new Set(Object.keys(manifest.userConfig ?? {}));
+    for (const m of claudeMcp.matchAll(/\$\{user_config\.([A-Za-z0-9_]+)\}/g)) {
+      if (!declared.has(m[1])) findings.error("PLUGIN_USER_CONFIG_UNDECLARED", `.mcp.json references \${user_config.${m[1]}}, which userConfig in .claude-plugin/plugin.json does not declare.`, { file: `${base}/.mcp.json` });
+    }
   }
   const readme = generated.get(`${base}/README.md`) ?? "";
   const words = readme.replace(/```[\s\S]*?```/g, "").split(/\s+/).filter(Boolean).length;

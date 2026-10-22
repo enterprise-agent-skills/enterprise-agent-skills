@@ -27,6 +27,7 @@
     "check": "npm run build:check && npm run validate && npm run security && npm run test:unit && npm run eval:mock",
     "report": "node scripts/report.mjs",
     "package": "node scripts/package.mjs",
+    "package:cowork": "node scripts/cowork-package.mjs",
     "links:external": "node scripts/check-external-links.mjs",
     "new:skill": "node scripts/new-skill.mjs",
     "export:upstream": "node scripts/export-upstream.mjs"

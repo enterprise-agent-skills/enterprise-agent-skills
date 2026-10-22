@@ -68,8 +68,11 @@ records a live verification (a real system or a live model evaluation) in
 
 Edit `plugins/<name>/plugin.yaml` only. Never rename a released plugin or skill: install
 commands and marketplaces depend on the name. Plugins may bundle an MCP server only if
-`mcp/servers.yaml` lists it with `bundle_policy: bundle` (official, no credentials). Hooks and
-top-level `bin/` folders are not accepted; see [SECURITY.md](SECURITY.md).
+`mcp/servers.yaml` lists it with `bundle_policy: bundle`: either a vendor-published server
+that needs no credentials, or a server published from this repository under
+`plugins/<plugin>/mcp/<server>/` (`bundled_from_plugin`) that is read-only by default and
+takes credentials only from the agent's prompt (`user_config`) or its own setup command.
+Hooks and top-level `bin/` folders are not accepted; see [SECURITY.md](SECURITY.md).
 
 ## Credit and sources
 
