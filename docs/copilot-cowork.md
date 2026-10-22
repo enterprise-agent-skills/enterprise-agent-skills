@@ -8,8 +8,12 @@ mode on a host you control, protected by Microsoft Entra ID.
 
 If you only want the skills, you need no server: upload the `-copilot-cowork.zip` files from a
 release as the README describes under
-[Download skills as ZIP files](../README.md#download-skills-as-zip-files). That package has no
-connector.
+[Download skills as ZIP files](../README.md#download-skills-as-zip-files). Those packages have
+no connector: Cowork then answers from the skills alone and, asked about a connection to your
+SAP system, says it has none. The package this guide builds is different: it carries the
+`sap-system` connector with the address of your own server, which is why it is built by you
+and not published as a release file. If you uploaded a release package first, remove it under
+Customize > Plugins before you upload the built one, so the skills are not listed twice.
 
 The facts about Cowork, Microsoft Entra ID, and the Teams developer portal in this guide were
 checked against the pages listed under [Sources](#sources) on 2026-10-22. The facts about the
