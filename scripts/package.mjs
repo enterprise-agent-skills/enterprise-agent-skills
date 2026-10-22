@@ -159,7 +159,7 @@ export function buildPackages({ outDir = join(REPO_ROOT, "dist"), version = null
       } else if (w.relPath.startsWith("plugins/")) {
         what = `Plugin \`${name.replace(/^plugin-/, "").replace(/\.zip$/, "")}\` with all platform manifests`;
       } else if (w.relPath.startsWith("copilot-cowork/plugin-")) {
-        what = `Plugin \`${name.replace(/^plugin-/, "").replace(/-copilot-cowork\.zip$/, "")}\` for Microsoft 365 Copilot Cowork (Upload plugin)`;
+        what = `Plugin \`${name.replace(/^plugin-/, "").replace(/-copilot-cowork\.zip$/, "")}\` for Microsoft 365 Copilot Cowork (Upload plugin): skills only, no connection to a system; a package with a connector is built with \`npm run package:cowork\``;
       } else if (w.relPath.startsWith("copilot-cowork/")) {
         what = `Skill \`${name.replace(/-copilot-cowork\.zip$/, "")}\` for Microsoft 365 Copilot Cowork (Upload skill)`;
       }
