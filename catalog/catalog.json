@@ -10,7 +10,7 @@
       "vendor": "sap",
       "category": "development",
       "maturity": "beta",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "description": "Skills for SAP ABAP development across customer-managed and cloud systems: Standard ABAP on SAP ECC 6.0, SAP NetWeaver AS ABAP, and SAP S/4HANA (on premises or on Azure, AWS, or Google Cloud VMs), enhancements and integration, plus ABAP Cloud with RAP and clean core assessments.",
       "path": "plugins/sap-abap",
       "skills": [
@@ -23,7 +23,9 @@
       "agents": [
         "abap-reviewer"
       ],
-      "mcp_servers": []
+      "mcp_servers": [
+        "sap-system"
+      ]
     },
     {
       "name": "microsoft-fabric",
@@ -269,7 +271,7 @@
         "sap_basis_min": "7.57"
       },
       "summary": "Build a managed RAP business object with draft for SAP Fiori elements on ABAP Cloud: database table, CDS view entities, behavior definition, behavior pool, projection layer, service definition, and service binding.",
-      "description": "Build a managed RAP business object with draft for SAP Fiori elements on ABAP Cloud: database table, CDS view entities, behavior definition, behavior pool, projection layer, service definition, and service binding. USE FOR: creating or extending a transactional RAP business object, adding validations, determinations, actions, or feature control, enabling draft, fixing ETag and lock settings, exposing a business object as an OData V4 UI service. DO NOT USE FOR: RAP on S/4HANA 1909 to 2021 (this code needs 7.57; not covered by this plugin), ECC or Standard ABAP reports, Dynpro, or ALV (use sap-abap-standard), BAdI implementations (use sap-abap-enhancements), SEGW OData services (use sap-abap-integration), BOPF-based objects, read-only analytical queries, CAP services, freestyle SAPUI5 code, or released-API reviews (use sap-clean-core-check).",
+      "description": "Build a managed RAP business object with draft for SAP Fiori elements on ABAP Cloud: database table, CDS view entities, behavior definition, behavior pool, projection layer, service definition, and service binding. USE FOR: creating or extending a transactional RAP business object, adding validations, determinations, actions, or feature control, enabling draft, fixing ETag and lock settings, exposing a business object as an OData V4 UI service, reviewing an existing RAP stack, including one read from a connected system. DO NOT USE FOR: RAP on S/4HANA 1909 to 2021 (this code needs 7.57; not covered by this plugin), ECC or Standard ABAP reports, Dynpro, or ALV (use sap-abap-standard), BAdI implementations (use sap-abap-enhancements), SEGW OData services (use sap-abap-integration), BOPF-based objects, read-only analytical queries, CAP services, freestyle SAPUI5 code, or released-API reviews (use sap-clean-core-check).",
       "prerequisites": "SAP BTP ABAP environment, SAP S/4HANA Cloud Public Edition, or SAP S/4HANA 2022 or later using the ABAP Cloud development model. ABAP Development Tools (ADT) in Eclipse. A package and transport request in the customer namespace (Z or Y, or a registered namespace).",
       "path": "plugins/sap-abap/skills/sap-rap-business-object",
       "url": "https://github.com/enterprise-agent-skills/enterprise-agent-skills/tree/main/plugins/sap-abap/skills/sap-rap-business-object",
@@ -331,7 +333,7 @@
         "sap_basis_min": "7.00"
       },
       "summary": "Assess custom ABAP code for ABAP Cloud and clean core readiness: find SAP objects that are not released, look up their successors in SAP's Cloudification Repository, and rewrite code to use released APIs.",
-      "description": "Assess custom ABAP code for ABAP Cloud and clean core readiness: find SAP objects that are not released, look up their successors in SAP's Cloudification Repository, and rewrite code to use released APIs. USE FOR: reviewing custom code before an S/4HANA Cloud or ABAP Cloud migration, choosing released APIs for new ABAP Cloud classes, replacing direct reads of SAP tables such as VBAK, MARA, BKPF, or KNA1 with released CDS views, explaining ATC findings from the \"Usage of APIs\" or cloud readiness checks, producing a remediation list for a package. DO NOT USE FOR: building new RAP business objects (use sap-rap-business-object), writing or fixing Standard ABAP that stays on ECC or classic S/4HANA development (use sap-abap-standard), S/4HANA conversion findings from S4HANA_READINESS (use sap-abap-standard), clean core levels of exits and BAdIs (use sap-abap-enhancements), SAP Basis, upgrade, or SUM tasks, functional configuration, or performance tuning.",
+      "description": "Assess custom ABAP code for ABAP Cloud and clean core readiness: find SAP objects that are not released, look up their successors in SAP's Cloudification Repository, and rewrite code to use released APIs. USE FOR: reviewing custom code before an S/4HANA Cloud or ABAP Cloud migration, choosing released APIs for new ABAP Cloud classes, replacing direct reads of SAP tables such as VBAK, MARA, BKPF, or KNA1 with released CDS views, explaining ATC findings from the \"Usage of APIs\" or cloud readiness checks, producing a remediation list for a package, including one read from a connected system. DO NOT USE FOR: building new RAP business objects (use sap-rap-business-object), writing or fixing Standard ABAP that stays on ECC or classic S/4HANA development (use sap-abap-standard), S/4HANA conversion findings from S4HANA_READINESS (use sap-abap-standard), clean core levels of exits and BAdIs (use sap-abap-enhancements), SAP Basis, upgrade, or SUM tasks, functional configuration, or performance tuning.",
       "prerequisites": "Custom ABAP code from SAP ECC or SAP S/4HANA, or ABAP Cloud code on SAP BTP ABAP environment. Python 3.9 or later for the bundled lookup script (standard library only). Internet access to raw.githubusercontent.com, or a downloaded copy of the repository JSON file.",
       "path": "plugins/sap-abap/skills/sap-clean-core-check",
       "url": "https://github.com/enterprise-agent-skills/enterprise-agent-skills/tree/main/plugins/sap-abap/skills/sap-clean-core-check",

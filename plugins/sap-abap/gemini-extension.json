@@ -1,5 +1,42 @@
 {
   "name": "sap-abap",
-  "version": "0.2.0",
-  "description": "Skills for SAP ABAP development across customer-managed and cloud systems: Standard ABAP on SAP ECC 6.0, SAP NetWeaver AS ABAP, and SAP S/4HANA (on premises or on Azure, AWS, or Google Cloud VMs), enhancements and integration, plus ABAP Cloud with RAP and clean core assessments."
+  "version": "0.3.0",
+  "description": "Skills for SAP ABAP development across customer-managed and cloud systems: Standard ABAP on SAP ECC 6.0, SAP NetWeaver AS ABAP, and SAP S/4HANA (on premises or on Azure, AWS, or Google Cloud VMs), enhancements and integration, plus ABAP Cloud with RAP and clean core assessments.",
+  "mcpServers": {
+    "sap-system": {
+      "command": "node",
+      "args": [
+        "${extensionPath}/mcp/sap-system/launch.mjs",
+        "serve"
+      ]
+    }
+  },
+  "settings": [
+    {
+      "name": "SAP system URL",
+      "description": "ICM URL of the ABAP system, for example https://host:44300 or http://localhost:50000 for the trial. Prefer HTTPS.",
+      "envVar": "SAP_URL"
+    },
+    {
+      "name": "SAP user",
+      "description": "User name for the ABAP system. A read-only user is enough.",
+      "envVar": "SAP_USER"
+    },
+    {
+      "name": "SAP password",
+      "description": "Password of that user. Stored in the agent's secure credential store, never in the plugin.",
+      "envVar": "SAP_PASSWORD",
+      "sensitive": true
+    },
+    {
+      "name": "SAP client",
+      "description": "Client number, for example 001.",
+      "envVar": "SAP_CLIENT"
+    },
+    {
+      "name": "Logon language",
+      "description": "Two-letter logon language, for example EN.",
+      "envVar": "SAP_LANGUAGE"
+    }
+  ]
 }

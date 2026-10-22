@@ -56,6 +56,19 @@ Reference files:
 
 ## Step 1: Pin down the target and the requirement
 
+If tools named `sap_*` are available (the sap-system MCP server of this plugin, or any SAP MCP
+server with the same tool names), call `sap_connection_info` and then `sap_system_info` before
+you ask. Take the SAP_BASIS release and support package (`release` 754 with `support_package`
+0003 is 7.54 SP03), S4CORE or SAP_APPL, and the product hint from the result, and say in the
+answer that the target came from the connected system, with the URL and client from
+`sap_connection_info`. Ask only for what the tools cannot tell: the database when `database`
+is null, the language version of the object, and the requirement (items 2 and 3 below). When
+a tool returns `ok: false` with a setup message, tell the user how to finish the setup (Claude
+Code: enable the plugin and enter the connection details when asked; Copilot CLI and other
+hosts: run the setup command named in the error) and continue with the questions below.
+Without `sap_*` tools, say once that the plugin's sap-system server can supply the release
+from a connected system, then ask.
+
 Ask for anything you cannot see. Do not assume the newest release.
 
 1. **Product and release**: ECC 6.0 with enhancement package, NetWeaver AS ABAP, or S/4HANA
@@ -128,6 +141,10 @@ net value threshold.
   system (ADT, API State tab of the object's properties) before you rely on it.
 - Read the BAdI or exit documentation: it usually states when the call happens, what may be
   changed, whether messages are allowed, and whether the code runs in the update task.
+- Connected system: `sap_search_objects` and `sap_read_source` show the SAP include, the BAdI
+  interface, or an existing implementation as it is in the system, and `sap_list_package`
+  lists the enhancement objects of a package. The server is read-only: never claim to have
+  created, activated, or changed an implementation, a CMOD project, or SAP code.
 
 Details: [references/exits-plugins-and-upgrades.md](references/exits-plugins-and-upgrades.md).
 
@@ -300,7 +317,8 @@ Details and sources: [references/exits-plugins-and-upgrades.md](references/exits
 
 ## Output format
 
-1. State the target you assumed: product, release, SAP_BASIS and support package, database.
+1. State the target: product, release, SAP_BASIS and support package, database, and whether
+   you read it from the connected system (URL and client) or assumed it.
 2. State the decision: the Customizing you checked, the technology you chose, and why the
    options above it in Step 2 do not fit.
 3. List the objects to create and where: enhancement spot, BAdI, enhancement implementation,

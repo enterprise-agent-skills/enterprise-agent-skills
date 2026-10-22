@@ -13,7 +13,9 @@ Derived from "SAP A4H Conversational Scout" by Amit Lal (MIT), the same author.
 - Python 3.10 or later with the packages `mcp` (2.x) and `httpx`:
   `python -m pip install "mcp>=2,<3" "httpx>=0.28,<1"`
 - Node.js, which the agents that load plugins already have. `launch.mjs` finds the Python
-  interpreter (`python3`, `python`, or the `py` launcher) and starts the server with it.
+  interpreter (`python3`, `python`, or the `py` launcher) and starts the server with it. To
+  use a specific interpreter, for example one in a virtual environment, set
+  `SAP_SYSTEM_MCP_PYTHON` to its path.
 - An SAP user that may read the objects you ask about, and the URL of the system's ICM, for
   example `https://sap.example.com:44300`. Trial systems in Docker usually expose
   `http://localhost:50000`. ADT (`/sap/bc/adt`) must be active in SICF, which it is on every
@@ -38,11 +40,16 @@ blocked unless `SAP_BLOCK_FREE_SQL=false`.
 ## How the connection details reach the server
 
 - **Claude Code**: when you enable the plugin, Claude Code asks for the SAP URL, user,
-  password, and client and stores the password in its secure credential store. Nothing else
-  to do.
-- **GitHub Copilot CLI, Gemini CLI, Cursor, and other Agent Plugins hosts**: run the
-  one-time setup from the installed plugin folder. It tests the connection and writes a
-  config file outside the plugin:
+  password, client, and logon language and stores the password in its secure credential
+  store. Nothing else to do.
+- **Gemini CLI**: when the plugin folder is installed as an extension, Gemini CLI asks for
+  the same values and keeps the password in the system keychain;
+  `gemini extensions config sap-abap` changes them later.
+- **Claude Cowork and claude.ai** do not start local servers with prompted values; the skills
+  ask you for the release instead.
+- **GitHub Copilot CLI, Cursor, and other Agent Plugins hosts**: run the one-time setup from
+  the installed plugin folder. It tests the connection and writes a config file outside the
+  plugin:
 
   ```text
   node <plugin folder>/mcp/sap-system/launch.mjs setup
@@ -65,8 +72,8 @@ blocked unless `SAP_BLOCK_FREE_SQL=false`.
 - The server talks only to `SAP_URL`. Credentials never appear in tool results. In HTTPS mode
   the SAP credentials stay on the host that runs the server; Cowork users sign in with their
   Microsoft Entra ID account instead.
-- Prefer the HTTPS port of your system. With a plain `http://` URL to a remote host the server
-  warns that the SAP password travels unencrypted.
+- Prefer the HTTPS port of your system. With a plain HTTP URL (no TLS) to a remote host the
+  server warns that the SAP password travels unencrypted.
 
 ## Commands
 

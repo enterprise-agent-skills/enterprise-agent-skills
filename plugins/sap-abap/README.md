@@ -12,7 +12,7 @@ Each skill states the SAP products, SAP_BASIS releases, and ABAP development mod
 | Publisher | Enterprise Agent Skills contributors (independent; not affiliated with SAP) |
 | Category | Development |
 | Maturity | beta |
-| Version | 0.2.0 |
+| Version | 0.3.0 |
 | License | MIT |
 
 ## Skills
@@ -63,7 +63,23 @@ To update:
 
 ## Data and permissions
 
-This plugin contains instructions, reference documents, and a helper script. It bundles no MCP servers or hooks. The helper script `skills/sap-clean-core-check/scripts/lookup_api_state.py` downloads a file from SAP's Cloudification Repository on GitHub ([SAP/abap-atc-cr-cv-s4hc](https://github.com/SAP/abap-atc-cr-cv-s4hc), served from raw.githubusercontent.com) each time an agent runs it. The file lists the release state of SAP objects. The script looks up object names in it on your machine and sends no code or object names. To work offline, download the file once and pass `--source <local file>`. Any other data access happens through tools you have already connected to your agent.
+This plugin bundles the MCP servers below. They start or connect only in agents that support plugin MCP configuration. Review each server's own documentation for the data it accesses.
+
+| Server | Publisher | Transport | Authentication | Source |
+| --- | --- | --- | --- | --- |
+| SAP system MCP server | Enterprise Agent Skills contributors | stdio | your own credentials for your system | https://github.com/enterprise-agent-skills/enterprise-agent-skills/tree/main/plugins/sap-abap/mcp/sap-system |
+
+The `sap-system` server is published from this repository (`mcp/sap-system/`) and runs on your machine. It needs Python 3.10 or later with the mcp (2.x) and httpx packages (the launcher prints the pip command when they are missing) and network access from your machine to the SAP system's ICM port, for example 44300 for HTTPS or 50000 for the trial's HTTP. It connects only to the SAP URL you configure, with your own SAP user and password, and sends data to no other host. It is read-only by default: it blocks every HTTP verb that could change the system, blocks free SQL, validates object names against SAP naming rules, filters WHERE clauses, and limits rows (500 by default). Your credentials never appear in tool results. Prefer an HTTPS URL; use http:// only for a trial system on the same machine.
+
+How each agent gets the connection details (SAP system URL, SAP user, SAP password, SAP client, and logon language):
+
+- Claude Code asks for them when you enable the plugin and keeps the SAP password in its secure credential store.
+- Gemini CLI asks for them when the plugin folder is installed as an extension and keeps the SAP password in the system keychain; `gemini extensions config sap-abap` changes them later.
+- GitHub Copilot CLI, OpenAI Codex, Cursor, and other Agent Plugins hosts do not prompt: run `node <plugin folder>/mcp/sap-system/launch.mjs setup` once. It tests the connection and writes the values to `%APPDATA%\enterprise-agent-skills\sap-system.env` on Windows or to `$XDG_CONFIG_HOME/enterprise-agent-skills/sap-system.env` (by default `~/.config/enterprise-agent-skills/sap-system.env`) elsewhere, outside the plugin folder. Environment variables (`SAP_URL`, `SAP_USER`, `SAP_PASSWORD`, `SAP_CLIENT`, `SAP_LANGUAGE`) take precedence over that file, and `SAP_SYSTEM_MCP_ENV` names a different file.
+
+`<plugin folder>` is the folder your agent installed the plugin to; in a clone of this repository it is `plugins/sap-abap`.
+
+The helper script `skills/sap-clean-core-check/scripts/lookup_api_state.py` downloads a file from SAP's Cloudification Repository on GitHub ([SAP/abap-atc-cr-cv-s4hc](https://github.com/SAP/abap-atc-cr-cv-s4hc), served from raw.githubusercontent.com) each time an agent runs it. The file lists the release state of SAP objects. The script looks up object names in it on your machine and sends no code or object names. To work offline, download the file once and pass `--source <local file>`.
 
 ## Tests
 

@@ -1,6 +1,6 @@
 name: sap-abap
 display_name: ABAP development skills for SAP S/4HANA, SAP ECC, and SAP BTP
-version: 0.2.0
+version: 0.3.0
 description: >-
   Skills for SAP ABAP development across customer-managed and cloud systems: Standard ABAP on SAP
   ECC 6.0, SAP NetWeaver AS ABAP, and SAP S/4HANA (on premises or on Azure, AWS, or Google Cloud
@@ -19,6 +19,9 @@ keywords: [sap, abap, ecc, netweaver, s4hana, abap-cloud, rap, enhancements, ido
 maturity: beta
 # Broadest skill first; the README and catalog list the skills in this order.
 skill_order: [sap-abap-standard, sap-abap-enhancements, sap-abap-integration, sap-rap-business-object, sap-clean-core-check]
+# The read-only SAP system server published from this repository (mcp/sap-system/). Its
+# registry entry in mcp/servers.yaml drives the generated MCP configuration for each agent.
+mcp_servers: [sap-system]
 upstream:
   microsoft_skills: not-applicable
   notes: SAP-specific content is outside the scope of github.com/microsoft/skills.

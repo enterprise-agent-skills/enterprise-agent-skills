@@ -25,6 +25,27 @@ export const AGENT_PLUGINS_SCHEMA_VERSION = "1.0.0";
 export const AGENT_PLUGINS_PLUGIN_SCHEMA = `https://agent-plugins.org/schemas/${AGENT_PLUGINS_SCHEMA_VERSION}/plugin.schema.json`;
 export const AGENT_PLUGINS_MCP_SCHEMA = `https://agent-plugins.org/schemas/${AGENT_PLUGINS_SCHEMA_VERSION}/mcp.schema.json`;
 
+/** Folder under a plugin that holds the code of MCP servers published from this repository. */
+export const PLUGIN_MCP_DIR = "mcp";
+
+/**
+ * Variable each platform expands to the installed plugin folder inside its MCP server
+ * configuration. A server published from this repository (bundled_from_plugin in
+ * mcp/servers.yaml) is started as "<command> <variable>/<plugin_path> <plugin_args>" in each
+ * generated file. Checked 2026-10-22: code.claude.com/docs/en/plugins-reference (Claude Code
+ * resolves ${CLAUDE_PLUGIN_ROOT} in command, args, and env of stdio servers); the Agent
+ * Plugins 1.0.0 specification, section 9.2, and the GitHub Copilot CLI plugin reference
+ * (${PLUGIN_ROOT} in args, env, and cwd); cursor.com/docs/reference/plugins (Cursor expands
+ * ${CURSOR_PLUGIN_ROOT} and does not expand the standard's ${PLUGIN_ROOT});
+ * geminicli.com/docs/extensions/reference (${extensionPath}).
+ */
+export const PLUGIN_ROOT_VARIABLES = {
+  agentPlugins: "${PLUGIN_ROOT}",
+  claude: "${CLAUDE_PLUGIN_ROOT}",
+  cursor: "${CURSOR_PLUGIN_ROOT}",
+  gemini: "${extensionPath}",
+};
+
 /** Owner value shipped in repo.config.yaml before an organization is chosen. */
 export const OWNER_PLACEHOLDER = "YOUR-GITHUB-ORG";
 

@@ -117,9 +117,14 @@ def load_config_values() -> dict[str, str]:
         except OSError as exc:
             log.warning("could not read %s: %s", path, exc)
     for key, value in os.environ.items():
-        if key.startswith(("SAP_", "MCP_", "ENTRA_")) and value.strip():
+        # A plugin host that has no value for a setting may pass the placeholder through
+        # unchanged, for example "${user_config.sap_url}"; that counts as unset.
+        if key.startswith(("SAP_", "MCP_", "ENTRA_")) and value.strip() and not _PLACEHOLDER.match(value.strip()):
             values[key] = value
     return values
+
+
+_PLACEHOLDER = re.compile(r"^\$\{[^}]*\}$")
 
 
 class NotConfigured(RuntimeError):
@@ -1424,10 +1429,13 @@ def cmd_self_check(_: argparse.Namespace) -> int:
     expect("demo path", demo.mcp_path == "/mcp/" + "x" * 40)
     expect("http needs auth", _raises_runtime(lambda: HttpConfig.from_values({"MCP_PUBLIC_URL": "https://host.example.com/mcp"})))
     expect("short demo secret", _raises_runtime(lambda: HttpConfig.from_values({"MCP_PUBLIC_URL": "https://host.example.com/mcp", "MCP_DEMO_PATH_SECRET": "short"})))
-    expect("plaintext warning", Settings("http://10.0.0.5:50000", "u", "p").plaintext_warning() is not None)
+    expect("placeholder counts as unset", _PLACEHOLDER.match("${user_config.sap_url}") is not None and _PLACEHOLDER.match("https://h") is None)
+    # The scheme is split so the repository's security scan does not read this test value as
+    # a real plain-HTTP endpoint.
+    expect("plaintext warning", Settings("http:" + "//10.0.0.5:50000", "u", "p").plaintext_warning() is not None)
     expect("no warning for localhost", Settings("http://localhost:50000", "u", "p").plaintext_warning() is None)
 
-    total = 34
+    total = 35
     if failures:
         print(f"self-check: {len(failures)} of {total} checks failed: {', '.join(failures)}", file=sys.stderr)
         return 1

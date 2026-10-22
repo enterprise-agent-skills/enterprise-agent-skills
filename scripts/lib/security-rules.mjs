@@ -105,13 +105,14 @@ export function scanExtension(fileName) {
 const NAMED_TEXT_FILES = new Set(["LICENSE", "CODEOWNERS"]);
 const LOCKFILES = new Set(["package-lock.json", "npm-shrinkwrap.json"]);
 const IMAGE_FILE = /\.(?:png|jpe?g|gif|ico)$/i;
-const SKILL_SCRIPT = /^plugins\/[^/]+\/skills\/[^/]+\/scripts\//;
+const SKILL_SCRIPT = /^plugins\/[^/]+\/(?:skills\/[^/]+\/scripts|mcp)\//;
 
 /**
  * How the scan treats one file, given its repository-relative POSIX path. Returns
  * { action, script, finding }:
  *   action   "scan" (run the line rules), "lockfile" (registry check only), or "skip"
- *   script   true for anything under a skill's scripts/ folder, whatever its type, so it is
+ *   script   true for anything under a skill's scripts/ folder or a plugin's mcp/ folder
+ *            (bundled MCP servers), whatever its type, so it is
  *            listed for the human review that SECURITY.md requires
  *   finding  { level, code, message } to report, or null
  *

@@ -64,13 +64,15 @@ az network nsg rule create -g <resource-group> --nsg-name <nsg> -n AllowHttpsInb
 
 ```bash
 curl -s https://<dns-name>/healthz
-curl -s https://<dns-name>/.well-known/oauth-protected-resource
+curl -s https://<dns-name>/.well-known/oauth-protected-resource/mcp
 curl -s -o /dev/null -w '%{http_code}\n' -X POST https://<dns-name>/mcp
 ```
 
 The first call returns `{"ok": true, ...}`, the second the protected resource metadata that
-names your Entra tenant as the authorization server, and the third `401`, because an MCP call
-without a token is refused. Logs: `docker compose logs -f mcp` and `docker compose logs -f caddy`
+names your Entra tenant as the authorization server (the document lives under the MCP path,
+as RFC 9728 prescribes for a resource with a path), and the third `401`, because an MCP call
+without a token is refused. In demo mode the second call returns 404, because there is no
+sign-in to describe. Logs: `docker compose logs -f mcp` and `docker compose logs -f caddy`
 in `/opt/enterprise-agent-skills/deploy/sap-system-mcp`.
 
 ## Demo mode

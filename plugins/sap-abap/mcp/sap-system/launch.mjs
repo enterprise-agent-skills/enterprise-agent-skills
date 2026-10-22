@@ -13,6 +13,9 @@
  *   node launch.mjs selftest        check the connection and exit
  *   node launch.mjs print-tools     print the tools as JSON
  *   node launch.mjs --which         print the interpreter that would be used
+ *
+ * Set SAP_SYSTEM_MCP_PYTHON to the path of a specific interpreter, for example one in a
+ * virtual environment, to use it instead of the first one found on PATH.
  */
 import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
@@ -33,6 +36,15 @@ function probe(command, prefix) {
 }
 
 function findPython() {
+  // SAP_SYSTEM_MCP_PYTHON names the interpreter to use, for example one in a virtual
+  // environment that has mcp and httpx installed.
+  const chosen = (process.env.SAP_SYSTEM_MCP_PYTHON || "").trim();
+  if (chosen) {
+    const found = probe(chosen, []);
+    if (found) return found;
+    console.error(`sap-system: SAP_SYSTEM_MCP_PYTHON (${chosen}) is not a Python ${MIN_VERSION.join(".")} or later interpreter.`);
+    process.exit(1);
+  }
   for (const [command, prefix] of CANDIDATES) {
     const found = probe(command, prefix);
     if (found) return found;

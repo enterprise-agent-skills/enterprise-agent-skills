@@ -22,7 +22,10 @@ plugins/<p>/plugin.yaml      --->  plugins/<p>/plugin.json (Agent Plugins 1.0)  
                                    plugins/<p>/.claude-plugin/plugin.json       Claude Code, Cowork, claude.ai
                                    plugins/<p>/.cursor-plugin/plugin.json       Cursor
                                    plugins/<p>/gemini-extension.json            Gemini CLI
-mcp/servers.yaml             --->  plugins/<p>/mcp.json, .mcp.json              Agent Plugins clients, Claude Code, Cursor
+mcp/servers.yaml             --->  plugins/<p>/mcp.json, .mcp.json              Agent Plugins clients, Claude Code
+                                   mcpServers in .cursor-plugin, gemini-extension  Cursor, Gemini CLI
+                                   userConfig (Claude), settings (Gemini)        Agents that prompt for connection details
+plugins/<p>/mcp/<server>/    --->  (shipped as is; started through the files above) Agents that run local MCP servers
 plugins/<p>/agents/*.agent.md ---> plugins/<p>/com.github.copilot/agents/       Copilot (Agent Plugins mode); Claude reads agents/
 all plugins                  --->  .claude-plugin/marketplace.json              Claude Code, Cowork, npx skills, Copilot CLI fallback
                                    .github/plugin/marketplace.json              Copilot CLI
@@ -110,9 +113,17 @@ in abaplint's behavior shows up as a failing unit test rather than as silently w
 Shipped content (everything under `plugins/`) is treated as executable. The scanner blocks
 secret patterns, invisible Unicode, pipe-to-shell downloads, TLS bypasses, destructive
 commands, and instruction-override phrasing. Plugins cannot ship hooks or `bin/`. MCP servers
-come only from `mcp/servers.yaml`, must be vendor-published and version-pinned, and may be
-bundled only when they need no credentials. Bundled scripts are listed for human review.
-Workflows use read-only tokens unless a job needs more, and actions are pinned to commit SHAs.
+come only from `mcp/servers.yaml` and are of two kinds. Vendor-published servers are
+version-pinned and may be bundled only when they need no credentials. Servers published from
+this repository live in `plugins/<p>/mcp/<server>/`, are read-only by default, take
+credentials only from the agent's own prompt (`user_config`, which becomes Claude Code's
+`userConfig` and Gemini CLI's `settings`) or from a config file the user owns outside the
+plugin, and are reviewed like bundled scripts: the validator ties each server folder to its
+registry entry and the plugin that bundles it, the scanner reads every file under `mcp/`, and
+reviewers read the server in full before merge. Generated MCP configuration never contains a
+credential, only placeholders the agent substitutes. Bundled scripts are listed for human
+review. Workflows use read-only tokens unless a job needs more, and actions are pinned to
+commit SHAs.
 
 ## Packaging and releases
 
@@ -154,6 +165,8 @@ The release assets and how to check a download are listed in
 | Legacy drafts are not part of the repository; `incubator/` holds only a README | Earlier drafts are migrated into focused skills with tests before they are published, so nothing below the bar is public and installers that search the repository find only published skills |
 | Release packages built from the tagged commit in a read-only job; the job that publishes runs no repository code | Keeps the write token away from third-party code; checksums and build provenance let users check a download |
 | Explicit SAP target for every ABAP sample, release facts in a tested registry | The same ABAP is right on S/4HANA 2023 and wrong on ECC 6.0 EHP6; release claims must be checkable, not remembered |
+| The SAP system server is published from this repository, read-only by default, and configured by the agent's prompt or a user-owned file | No vendor publishes a read-only server for customer ABAP systems; shipping one under review, with credentials that never touch the plugin, beats asking users to install unreviewed code |
+| One registry entry drives every platform's MCP configuration, with per-platform plugin-root variables | The platforms disagree on the variable and on where secrets may go (Agent Plugins forbids them in `env`); the generator applies each rule once instead of each contributor remembering it |
 | Vendor-neutral name and no vendor logos | Avoids trademark problems and implied endorsement |
 
 ## Extension points
@@ -162,6 +175,12 @@ The release assets and how to check a download are listed in
   add positive and negative unit tests.
 - New platform manifest: add a generator in `scripts/lib/generate.mjs`, a schema in
   `schemas/platform/`, and a row in [platform-compatibility.md](platform-compatibility.md).
+- New MCP server published from this repository: put its code and launcher under
+  `plugins/<p>/mcp/<server>/`, add a registry entry with `bundled_from_plugin`,
+  `plugin_path`, `plugin_args`, `data_access`, and `user_config` to `mcp/servers.yaml`, list
+  it in that plugin's `plugin.yaml`, and add it to the plugin-root variable table in
+  [platform-compatibility.md](platform-compatibility.md#bundled-mcp-server). The generator
+  and `tests/unit/mcp-bundle.test.mjs` cover the per-platform files.
 - New vendor or category: add it to `repo.config.yaml`.
 - New SAP release: add it to `config/sap-environments.yaml` (release, SAP_BASIS, grammar
   mapping) and a release point in `tests/unit/abap-release-features.test.mjs`.

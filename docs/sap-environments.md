@@ -135,6 +135,20 @@ Facts behind the mapping, from SAP's ABAP release news and platform documentatio
 - ABAP for Cloud Development is available on premises and in Private Edition from S/4HANA
   2022 (7.57).
 
+### Reading the release from a connected system
+
+When the sap-abap plugin's sap-system MCP server, or another SAP MCP server with the same tool
+names, is connected, the skills call `sap_system_info` instead of asking for System > Status.
+The tool reads table CVERS, which lists the installed software components with their release
+and support package level (the data behind System > Status > Component information), and
+returns SAP_BASIS, S4CORE (S/4HANA) or SAP_APPL (ECC), a product hint such as
+`SAP S/4HANA 1909 (SAP_BASIS 7.54)`, and `database`, which is null when the server cannot
+tell it. The SAP_BASIS release is the SAP_BASIS column of the table above without the dot:
+754 is 7.54 and S/4HANA 1909, 758 is 7.58 and S/4HANA 2023, 816 is 8.16 and S/4HANA 2025,
+and 750 with SAP_APPL 618 is ECC 6.0 EHP8. A system with neither S4CORE nor SAP_APPL, such
+as the ABAP Platform trial, is a NetWeaver or ABAP Platform system without ERP. When
+`database` is null, the skills ask for it where the product runs on more than one database.
+
 ## Describing a target
 
 The same keys work in three places.

@@ -54,7 +54,7 @@
       "type": "array",
       "uniqueItems": true,
       "items": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
-      "description": "IDs from mcp/servers.yaml. Only servers with bundle_policy 'bundle' may be listed."
+      "description": "IDs from mcp/servers.yaml. Only servers with bundle_policy 'bundle' may be listed, and a server with bundled_from_plugin may be listed only by that plugin."
     },
     "upstream": {
       "type": "object",

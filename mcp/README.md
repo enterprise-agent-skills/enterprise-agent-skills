@@ -6,11 +6,17 @@ platform-specific MCP configuration files.
 
 ## Policy
 
-- Only servers published and maintained by the product vendor are listed.
-- `bundle_policy: bundle` is allowed only for servers that need no credentials. Bundled
-  servers start or connect automatically in agents that support plugin MCP configuration.
-- Servers that need sign-in or keys are `document-only`: the plugin README explains them,
-  and users add them to their own agent configuration.
+- Two kinds of servers are listed: servers published and maintained by the product vendor,
+  and servers published from this repository under `plugins/<plugin>/mcp/<server>/`
+  (`bundled_from_plugin`).
+- `bundle_policy: bundle` is allowed for a vendor server only when it needs no credentials,
+  and for a server from this repository only when it is read-only by default and takes
+  credentials solely from the agent's own prompt (`user_config`) or from a config file the
+  server's setup command writes outside the plugin. Bundled servers start or connect
+  automatically in agents that support plugin MCP configuration. See
+  [SECURITY.md](../SECURITY.md#bundled-mcp-servers).
+- Vendor servers that need sign-in or keys are `document-only`: the plugin README explains
+  them, and users add them to their own agent configuration.
 - Package versions are pinned. Raise a version in its own pull request after checking the
   release notes, and update `last_verified`.
 
@@ -18,6 +24,7 @@ platform-specific MCP configuration files.
 
 | ID | Server | Transport | Credentials | Bundled by |
 |----|--------|-----------|-------------|------------|
+| `sap-system` | sap-system MCP server (this repository, read-only SAP access) | stdio | SAP user and password, prompted by the agent or written by the setup command | `sap-abap` |
 | `microsoft-learn` | Microsoft Learn MCP Server | streamable-http | none | `microsoft-fabric` |
 | `microsoft-fabric` | Microsoft Fabric MCP Server | stdio | Microsoft Entra sign-in | documented only |
 | `sap-ui5` | UI5 MCP Server | stdio | none | not yet used |

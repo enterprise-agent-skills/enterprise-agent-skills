@@ -23,8 +23,8 @@ section shows the full commands for `sap-abap` and how to update.
 | GitHub Copilot CLI | Agent Plugins `plugin.json` (preferred), `.github/plugin/marketplace.json`, `skills/`, `com.github.copilot/agents/`, `mcp.json` | `copilot plugin marketplace add <owner>/<repo>` then `copilot plugin install <plugin>@enterprise-agent-skills` | https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference | Schema-checked; installed and used (see the verification table below) |
 | GitHub Copilot in VS Code | Agent Skills in project or user skill folders | `npx skills add <owner>/<repo> --skill <skill>` | https://code.visualstudio.com/docs/copilot/customization/agent-skills | Schema-checked (skills follow the Agent Skills spec) |
 | OpenAI Codex | Agent Plugins `plugin.json`, `.agents/plugins/marketplace.json`, `skills/`, `mcp.json` | Codex CLI: `codex plugin marketplace add <owner>/<repo>`, then enter `/plugins`, install the plugin, and start a new session. The Codex IDE extension does not support plugins. | https://developers.openai.com/plugins/build/plugins; https://learn.chatgpt.com/docs/plugins (checked 2026-10-21) | Schema-checked; Codex `category` values not yet confirmed |
-| Cursor | `.cursor-plugin/plugin.json`, `skills/`, `.mcp.json`; Agent Skills via `npx skills` | `npx skills add <owner>/<repo> --skill <skill>` | Manifest modeled on github.com/microsoft/skills | Schema-checked |
-| Gemini CLI | `gemini-extension.json` (MCP servers); Agent Skills via `npx skills` | `npx skills add <owner>/<repo> --skill <skill>` | Gemini CLI extension docs; github.com/microsoft/skills | Schema-checked; skill loading from extensions depends on CLI version |
+| Cursor | `.cursor-plugin/plugin.json` (with `mcpServers` as `./.mcp.json` or inline), `skills/`; Agent Skills via `npx skills` | `npx skills add <owner>/<repo> --skill <skill>` | Manifest modeled on github.com/microsoft/skills; https://cursor.com/docs/reference/plugins (checked 2026-10-22) | Schema-checked |
+| Gemini CLI | `gemini-extension.json` (MCP servers and settings); Agent Skills via `npx skills` | `npx skills add <owner>/<repo> --skill <skill>` | https://geminicli.com/docs/extensions/reference/ (checked 2026-10-22); github.com/microsoft/skills | Schema-checked; skill loading from extensions depends on CLI version |
 | Other Agent Skills agents | `SKILL.md` folders | `npx skills add <owner>/<repo>` | https://agentskills.io | Schema-checked |
 
 ## Notes
@@ -35,9 +35,39 @@ section shows the full commands for `sap-abap` and how to update.
   `com.github.copilot/agents/`, so the build copies them there. Agent files omit `tools`
   because tool names differ between products.
 - **MCP servers.** The Agent Plugins `mcp.json` uses `streamable-http` for remote servers;
-  Claude's `.mcp.json` uses `http`; Gemini uses `httpUrl`. All three are generated from
-  `mcp/servers.yaml`.
+  Claude's `.mcp.json` uses `http`; Gemini uses `httpUrl`. All of them, and the Cursor and
+  Gemini manifests, are generated from `mcp/servers.yaml`. A server published from this
+  repository is started from the plugin folder with each platform's own variable; see
+  [Bundled MCP server](#bundled-mcp-server).
 - **Hooks.** Not used. Hook formats differ by product and hooks execute code automatically.
+
+## Bundled MCP server
+
+The `sap-abap` plugin bundles `sap-system`, a read-only server whose code lives in
+`plugins/sap-abap/mcp/sap-system/`. Each platform starts it as
+`node <plugin root>/mcp/sap-system/launch.mjs serve`, with the plugin root written as the
+variable that platform expands. The connection details (SAP URL, user, password, client,
+language) reach the server as environment variables where the platform can ask for them, and
+from a config file in the user's profile (written by `launch.mjs setup`) everywhere else; the
+plugin itself never holds a value.
+
+| Platform | File the build writes | Plugin root variable | How the connection details reach the server | Source (checked 2026-10-22) |
+|----------|-----------------------|----------------------|---------------------------------------------|------------------------------|
+| Claude Code | `.mcp.json` with `env` values `${user_config.<key>}`; `userConfig` in `.claude-plugin/plugin.json` | `${CLAUDE_PLUGIN_ROOT}` | Prompted when the plugin is enabled; sensitive values go to the platform's secure credential store, the rest to `pluginConfigs` in the user's settings | https://code.claude.com/docs/en/plugins-reference (User configuration, Environment variables) |
+| Claude Cowork and claude.ai | Same files, but the server does not start: chat ignores local MCP servers, and Cowork ignores a server whose `${user_config.*}` reference names an option without a default and does not prompt for values | `${CLAUDE_PLUGIN_ROOT}` | Not on these surfaces; the skills ask you for the release instead | https://claude.com/docs/plugins/platform-support (checked 2026-10-22) |
+| GitHub Copilot CLI | `mcp.json` (Agent Plugins), `type: stdio`, no `env` | `${PLUGIN_ROOT}` | Setup command. The Agent Plugins specification forbids secrets in `env` and expands only `${PLUGIN_ROOT}` and `${PLUGIN_DATA}` | https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference; Agent Plugins specification 1.0.0, sections 7.2.1 and 9.2 |
+| OpenAI Codex | `mcp.json` (Agent Plugins) | `${PLUGIN_ROOT}` | Setup command. Codex documents `PLUGIN_ROOT` for hook commands; its expansion in `mcp.json` is not confirmed, and local servers count as desktop-only plugins | https://developers.openai.com/plugins/build/plugins |
+| Cursor | Inline `mcpServers` in `.cursor-plugin/plugin.json` | `${CURSOR_PLUGIN_ROOT}` (Cursor does not expand `${PLUGIN_ROOT}`) | Setup command. Cursor substitutes only its own plugin variables, not `${user_config.*}`, so the Claude file is not reused | https://cursor.com/docs/reference/plugins |
+| Gemini CLI | `mcpServers` and `settings` in `gemini-extension.json` | `${extensionPath}` | Prompted when the extension is installed (`gemini extensions config <name>` later); sensitive values go to the system keychain. The server receives only the declared settings plus a few standard variables such as `HOME` and `PATH` | https://geminicli.com/docs/extensions/reference/ |
+| Microsoft 365 Copilot Cowork | None; Cowork cannot start a local server | n/a | The same server in its HTTPS mode on your own host; see [copilot-cowork.md](copilot-cowork.md) | https://learn.microsoft.com/microsoft-365/copilot/cowork/cowork-customize |
+
+The server reads its configuration from the process environment first, then from the file
+named by `SAP_SYSTEM_MCP_ENV`, else from `%APPDATA%\enterprise-agent-skills\sap-system.env` on
+Windows or `$XDG_CONFIG_HOME/enterprise-agent-skills/sap-system.env` (default
+`~/.config/enterprise-agent-skills/sap-system.env`) elsewhere. `npm run validate` checks that
+the launcher exists, that only `sap-abap` bundles the server, that the Agent Plugins
+`mcp.json` passes the vendored schema, and that every `${user_config.*}` reference in
+`.mcp.json` is declared in `userConfig`.
 
 ## Recording a verification
 

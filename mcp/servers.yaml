@@ -1,10 +1,18 @@
 # Curated MCP servers that skills in this repository may reference.
 #
 # Rules (enforced by npm run validate):
-# - Only vendor-published servers are listed. Community servers can be proposed in an issue.
-# - bundle_policy "bundle" is allowed only for official servers that need no credentials.
-#   Everything else is "document-only": plugins describe it, users install it themselves.
-# - Package versions are pinned. Update them deliberately and re-verify.
+# - Vendor-published servers (official: true) are listed here; community servers can be
+#   proposed in an issue. The only other kind is a server published from this repository:
+#   its code lives in plugins/<plugin>/mcp/<server>/, bundled_from_plugin names that plugin,
+#   official is false, and it is reviewed like a bundled script.
+# - bundle_policy "bundle" is allowed for official servers that need no credentials and for
+#   servers published from this repository. The latter are read-only by default and take
+#   credentials only from the agent's own prompt (user_config) or from a config file the user
+#   owns outside the plugin, written by the server's setup command; nothing is stored in the
+#   repository. Everything else is "document-only": plugins describe it, users install it.
+# - Only the plugin named in bundled_from_plugin may list such a server in plugin.yaml.
+# - Package versions are pinned (npx servers need an exact version). Update them
+#   deliberately and re-verify.
 # - last_verified is the date someone confirmed the source, license, and launch command.
 
 servers:
@@ -72,6 +80,77 @@ servers:
     bundle_policy: bundle
     requirements: Run inside a CAP project folder.
     last_verified: "2026-10-14"
+
+  - id: sap-system
+    name: SAP system MCP server
+    vendor: sap
+    publisher: Enterprise Agent Skills contributors
+    official: false
+    source: https://github.com/enterprise-agent-skills/enterprise-agent-skills/tree/main/plugins/sap-abap/mcp/sap-system
+    license: MIT
+    description: >-
+      Read-only access to your own SAP ABAP system (SAP ECC, SAP S/4HANA, or the ABAP Platform
+      trial) over ADT REST and OData v2 with your SAP user: installed release and software
+      components, object search, table definitions and rows, source code, packages, and OData
+      services. The skills use the release it reports to pick the syntax level.
+    transport: stdio
+    command: node
+    bundled_from_plugin: sap-abap
+    plugin_path: mcp/sap-system/launch.mjs
+    plugin_args: ["serve"]
+    setup_args: ["setup"]
+    setup_notes: >-
+      It tests the connection and writes the values to `%APPDATA%\enterprise-agent-skills\sap-system.env`
+      on Windows or to `$XDG_CONFIG_HOME/enterprise-agent-skills/sap-system.env` (by default
+      `~/.config/enterprise-agent-skills/sap-system.env`) elsewhere, outside the plugin folder.
+      Environment variables (`SAP_URL`, `SAP_USER`, `SAP_PASSWORD`, `SAP_CLIENT`, `SAP_LANGUAGE`)
+      take precedence over that file, and `SAP_SYSTEM_MCP_ENV` names a different file.
+    data_access: >-
+      It connects only to the SAP URL you configure, with your own SAP user and password, and
+      sends data to no other host. It is read-only by default: it blocks every HTTP verb that
+      could change the system, blocks free SQL, validates object names against SAP naming rules,
+      filters WHERE clauses, and limits rows (500 by default). Your credentials never appear in
+      tool results. Prefer an HTTPS URL; use http:// only for a trial system on the same machine.
+    auth: system-credentials
+    read_only_by_default: true
+    bundle_policy: bundle
+    requirements: >-
+      It needs Python 3.10 or later with the mcp (2.x) and httpx packages (the launcher prints
+      the pip command when they are missing) and network access from your machine to the SAP
+      system's ICM port, for example 44300 for HTTPS or 50000 for the trial's HTTP.
+    user_config:
+      sap_url:
+        title: SAP system URL
+        description: ICM URL of the ABAP system, for example https://host:44300 or http://localhost:50000 for the trial. Prefer HTTPS.
+        type: string
+        required: true
+        env: SAP_URL
+      sap_user:
+        title: SAP user
+        description: User name for the ABAP system. A read-only user is enough.
+        type: string
+        required: true
+        env: SAP_USER
+      sap_password:
+        title: SAP password
+        description: Password of that user. Stored in the agent's secure credential store, never in the plugin.
+        type: string
+        required: true
+        sensitive: true
+        env: SAP_PASSWORD
+      sap_client:
+        title: SAP client
+        description: Client number, for example 001.
+        type: string
+        default: "001"
+        env: SAP_CLIENT
+      sap_language:
+        title: Logon language
+        description: Two-letter logon language, for example EN.
+        type: string
+        default: EN
+        env: SAP_LANGUAGE
+    last_verified: "2026-10-22"
 
   - id: sap-fiori
     name: SAP Fiori MCP Server
