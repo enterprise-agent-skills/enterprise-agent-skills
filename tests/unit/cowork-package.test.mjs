@@ -216,6 +216,7 @@ test("cowork: production package carries the auth config id and the tool list wh
       version: "v1.2.3",
       appId: "11111111-2222-4333-8444-555555555555",
       shortName: "SAP ABAP",
+      includeTools: true,
       printTools: (launcher) => {
         calls++;
         assert.match(launcher.replace(/\\/g, "/"), /plugins\/sap-abap\/mcp\/sap-system\/launch\.mjs$/);
@@ -232,7 +233,7 @@ test("cowork: production package carries the auth config id and the tool list wh
     assert.equal(manifest.name.short, "SAP ABAP");
     assert.deepEqual(manifest.agentConnectors[0].toolSource.remoteMcpServer, {
       mcpServerUrl: "https://contoso-sap.example.com/mcp",
-      mcpToolDescription: { file: `./${TOOLS_FILE}` },
+      mcpToolDescription: { file: TOOLS_FILE },
       authorization: { type: "OAuthPluginVault", referenceId: "A1bC2dE3fH4iJ5kL6mN7oP8qR9sT0u" },
     });
     const tools = JSON.parse(entries.find((e) => e.path === TOOLS_FILE).data.toString("utf8"));
@@ -281,11 +282,11 @@ test("cowork: the command line builds a package and reports bad arguments with e
   withTemp((dir) => {
     const script = join(REPO_ROOT, "scripts", "cowork-package.mjs");
     const run = (args) => spawnSync(process.execPath, [script, ...args], { encoding: "utf8", cwd: REPO_ROOT, windowsHide: true });
-    const ok = run(["--mcp-url", DEMO_URL, "--auth", "None", "--out", dir, "--no-tools"]);
+    const ok = run(["--mcp-url", DEMO_URL, "--auth", "None", "--out", dir]);
     assert.equal(ok.status, 0, ok.stderr);
     assert.match(ok.stdout, /cowork-package: wrote .*sap-abap-cowork-plugin\.zip/);
     assert.match(ok.stdout, /<secret path not shown>/, "the demo secret is not echoed");
-    assert.match(ok.stdout, /not included \(left out \(--no-tools\)\)/);
+    assert.match(ok.stdout, /not included \(left out \(pass --tools to include it\)\)/);
     assert.ok(!ok.stdout.includes("0123456789abcdef0123456789abcdef"));
     assert.ok(existsSync(join(dir, "sap-abap-cowork-plugin.zip")));
     const bad = run(["--mcp-url", DEMO_URL, "--auth", "OAuthPluginVault", "--out", dir]);

@@ -252,7 +252,7 @@ The ZIP holds:
 | `manifest.json` | Microsoft 365 app manifest version 1.29: name, description, developer, icons, `agentSkills`, and the `agentConnectors` entry with your MCP URL and authorization |
 | `color.png`, `outline.png` | The 192 x 192 color icon and the 32 x 32 white-on-transparent outline icon, drawn by the script |
 | `skills/<name>/` | One folder per skill with `SKILL.md`, its `references/` and `scripts/`, and `LICENSE.txt` |
-| `tools/sap-system-tools.json` | Only when Python 3.10 or later with the `mcp` and `httpx` packages is installed on the build machine: the server's tool list in the `tools/list` format, referenced from the manifest. Cowork discovers tools from the server and does not use this file; other Microsoft 365 hosts treat it as a pinned tool list. Pass `--no-tools` to leave it out |
+| `tools/sap-system-tools.json` | Only with `--tools`: the server's tool list in the `tools/list` format, referenced from the manifest. Cowork discovers tools from the server and does not use this file, and on 2026-10-22 its upload validator rejected a package that declared the file although it was in the ZIP (`InvalidAgentConnector ... not found in the app package`). Leave it out for Cowork |
 
 Before writing the ZIP, the script validates the manifest against the vendored Microsoft 365
 app manifest schema ([schemas/vendor/microsoft-365/NOTICE.md](../schemas/vendor/microsoft-365/NOTICE.md))
@@ -273,7 +273,7 @@ Options:
 | `--version x.y.z` | Manifest version (default: the plugin version). Raise it for every new upload; the schema expects a version change when the manifest changes |
 | `--app-id <guid>` | Manifest id. By default a UUID v5 of the plugin name, the same on every build, so an updated package replaces the previous one. Use another GUID when two packages of the same plugin must coexist in one tenant, for example a demo build next to the production build |
 | `--name <short name>` | The name Cowork shows, up to 30 characters (default: the plugin name, `sap-abap`) |
-| `--no-tools` | Do not run the server to collect its tool list |
+| `--tools` | Run the server on the build machine and reference its tool list from the manifest. Not for Cowork; see the table above |
 
 The manifest's developer entry names this project, with `websiteUrl` pointing to the repository
 and `privacyUrl` and `termsOfUseUrl` pointing to the [Privacy](#privacy) and
@@ -341,6 +341,7 @@ URL stops working at once), rebuild the package with the new URL, upload it agai
 | Symptom | Cause | What to do |
 |---------|-------|------------|
 | Upload fails with a message like `Property 'x' has not been defined and the schema does not allow additional properties` | The manifest has a field the schema version does not allow | The script validates the manifest before it writes the ZIP, so this should not happen with an unmodified build. Rebuild with the current script; if it persists, open an issue with the message |
+| Upload fails with `InvalidAgentConnector: The agent connector with ID sap-system has its declared MCP tool description file ... not found in the app package` | The package declares the optional tool description file; Cowork's validator rejected it on 2026-10-22 even though the file was in the ZIP | Rebuild without `--tools` (builds before 2026-10-22 included the file by default) and upload again |
 | Upload fails because a skill has more than 20 companion files, or a file is too large or has an unsafe name | Cowork's companion file limits | The script checks these rules and names the file; shorten the skill or remove the file |
 | Upload fails in a tenant with Microsoft Purview Information Barriers | Plugin and skill uploads are blocked in tenants where Information Barriers are enabled | Ask your administrator; there is no package-side fix |
 | Sign-in fails with `AADSTS9010010` | The Application ID URI on the app registration does not exactly match the `resource` the client requests. Common causes: a trailing slash, the app still issuing v1 tokens, or a requested scope that belongs to a different app registration | Remove the trailing slash, confirm `requestedAccessTokenVersion` is `2`, re-add the Application ID URI, and make sure `SAP.Read` is defined on the same registration as the URI |
