@@ -48,7 +48,9 @@ Each step says what you get at the end and how to check it.
 
 **Step 1: run the server** ([details](#step-1-deploy-the-server), about 15 minutes)
 
-1. Pick a Linux host that can reach the SAP system's ICM port and has Docker Engine and
+1. Pick a Linux host that can reach the SAP system's ICM port (the port ABAP Development
+   Tools uses; the SAP system itself can run on its own VM, on premises, or in a managed
+   cloud, and stays private) and that has Docker Engine and
    Docker Compose v2. The host needs a public DNS name and inbound TCP 443 from the internet.
    The A4H trial in Docker on the same host is reached at `http://127.0.0.1:50000`.
 2. Create an SAP user for the server with display authorizations only.
