@@ -32,7 +32,7 @@ system can be:
 | SAP runs | Set `SAP_URL` to | Notes |
 |----------|------------------|-------|
 | On its own VM or physical server (the usual case: SAP ECC, S/4HANA on premises or on Azure, AWS, or Google Cloud VMs) | `https://<sap-host>:44300` (HTTPS port of the ICM; the number is the system's, 44300 is the convention for instance 00) | Run the connector on a separate small host in the same network, not on the SAP host. Only this host needs a public DNS name and port 443; the SAP system stays private. If the ICM uses a company certificate, the connector trusts it like any browser; set `SAP_INSECURE=true` only for a self-signed trial certificate |
-| In Docker on the same host as the connector (the A4H trial) | `http://127.0.0.1:50000` | What this folder was tested with |
+| In Docker on the same host as the connector (the A4H trial) | `https://127.0.0.1:50001` with `SAP_INSECURE=true` (self-signed trial certificate) | What this folder runs with. The trial's plain HTTP port 50000 can stay unbound after a restart of the container (`Address already in use` in `dev_icm`), so the HTTPS port is the dependable one |
 | In SAP's private cloud or another managed environment | The HTTPS URL of the ICM that the hosting provider gives you | The connector host must be allowed to reach it (allowlist, VPN, or peering) |
 
 Give the connector's SAP user display authorizations only (for example the authorizations of
