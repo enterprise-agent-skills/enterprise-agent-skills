@@ -21,20 +21,97 @@ server come from its README and from the deployment README in this repository. P
 are trademarks of their owners; this is an independent project (see
 [Terms of use](#terms-of-use)).
 
-## Steps at a glance
+## How it works, in one paragraph
 
-1. **Deploy the server** on a Linux host that can reach your SAP system, with Docker and a
-   public DNS name ([Step 1](#step-1-deploy-the-server)). One script installs it with
-   automatic TLS; only port 443 must be open. About 15 minutes.
-2. **Register the sign-in**: one app registration in Microsoft Entra ID and one Microsoft
-   Entra SSO client registration in the Teams developer portal, then put the IDs into the
-   server's env file ([Step 2](#step-2-register-the-connector-sign-in-in-microsoft-entra-id)).
-   Needs the Application Developer role. About 20 minutes. For a trial system with demo data
-   you can skip this step and use [Demo mode](#demo-mode).
-3. **Build the package** with `npm run package:cowork` ([Step 3](#step-3-build-the-package)).
-   One command.
-4. **Upload it in Cowork** under Customize > Plugins > Upload plugin, share it, and ask "Which
-   SAP release is my system?" ([Step 4](#step-4-upload-in-cowork-and-test)).
+Cowork runs in Microsoft's cloud and cannot start a program on anyone's machine. So one person
+in your organization runs the small `sap-system` server once, on a host that can reach the SAP
+system, and gives Cowork its HTTPS address inside the plugin package. Every Cowork user who
+gets the package then talks to that one server. The server signs in to SAP with one read-only
+SAP user whose password lives only on that host; Cowork users never see it. The server cannot
+change anything in SAP: there is no write tool and no setting that enables one. What a user
+sees is their own Microsoft sign-in (in the Entra ID setup) and then answers that come from the
+live system.
+
+## Who does what
+
+| Role | Does | Needs |
+|------|------|-------|
+| An administrator or SAP Basis colleague | Steps 1 and 2 once per organization: run the server, register the sign-in | A Linux host with Docker, a DNS name, an SAP user with display rights, the Application Developer role in Microsoft Entra ID |
+| Whoever builds the package | Step 3 once, and again when the address or the skills change | Node.js 22 and a clone of this repository |
+| Every Cowork user | Step 4: get the package (uploaded by themselves or shared with them), turn the plugin on, sign in once | A Microsoft 365 Copilot license; nothing to install |
+
+Uploading a ZIP alone is enough only for the skills. The connection always needs Steps 1 to 3.
+
+## Deployment runbook
+
+Each step says what you get at the end and how to check it.
+
+**Step 1: run the server** ([details](#step-1-deploy-the-server), about 15 minutes)
+
+1. Pick a Linux host that can reach the SAP system's ICM port and has Docker Engine and
+   Docker Compose v2. The host needs a public DNS name and inbound TCP 443 from the internet.
+   The A4H trial in Docker on the same host is reached at `http://127.0.0.1:50000`.
+2. Create an SAP user for the server with display authorizations only.
+3. As root on the host, download `deploy/sap-system-mcp/deploy.sh` from this repository, read
+   it, and run it with the settings as environment variables (`PUBLIC_HOST`, `ACME_EMAIL`,
+   `MCP_PUBLIC_URL`, `SAP_URL`, `SAP_USER`, `SAP_PASSWORD`, `SAP_CLIENT`; the `ENTRA_*`
+   values come from Step 2 and can be added later by running the script again). It clones the
+   repository, writes the settings to a private `.env` file, starts the server and Caddy, and
+   obtains the TLS certificate from Let's Encrypt. On an Azure VM the same script runs
+   through `az vm run-command` with the password as a protected parameter.
+4. You get: `https://<host>/healthz` returns `{"ok": true, ...}` from anywhere, and
+   `https://<host>/mcp` answers `401` to a request without a token.
+
+**Step 2: register the sign-in** ([details](#step-2-register-the-connector-sign-in-in-microsoft-entra-id), about 20 minutes; skip for a trial system and use [Demo mode](#demo-mode))
+
+1. In the Microsoft Entra admin center, register an app that represents the server: v2
+   tokens, Application ID URI `https://<host>`, a scope `SAP.Read`, the Teams consent redirect
+   URI, and the Microsoft Enterprise token store as an authorized client.
+2. In the Teams developer portal, create a Microsoft Entra SSO client registration for that
+   app with base URL `https://<host>/mcp`. It returns an auth config ID and an Application ID
+   URI.
+3. Add that URI to the app's `identifierUris`, put the tenant ID, client ID, audiences, scope,
+   and allowed client ID into the server's `.env`, and restart the server.
+4. You get: the auth config ID for Step 3, and
+   `https://<host>/.well-known/oauth-protected-resource/mcp` names your tenant as the
+   authorization server.
+
+**Step 3: build the package** ([details](#step-3-build-the-package), one command, or the release template edited by hand)
+
+```bash
+npm ci
+npm run package:cowork -- --mcp-url https://<host>/mcp --auth OAuthPluginVault --auth-config-id <auth config ID>
+```
+
+Without Node.js, use the template instead: every release attaches
+`plugin-sap-abap-cowork-template.zip`, the same package with two placeholders. Unzip it, open
+`manifest.json`, replace `https://sap-mcp.example.com/mcp` with your MCP URL and
+`REPLACE-WITH-YOUR-AUTH-CONFIG-ID` with your auth config ID (or, for demo mode, set
+`"authorization": {"type": "None"}` without a `referenceId` and use the secret URL), and zip
+the contents again so that `manifest.json` sits at the root of the ZIP, not inside a folder.
+On Windows PowerShell: `Compress-Archive -Path manifest.json, color.png, outline.png, skills -DestinationPath sap-abap-cowork-plugin.zip`;
+on macOS or Linux: `zip -r sap-abap-cowork-plugin.zip manifest.json color.png outline.png skills`.
+
+You get: `dist/copilot-cowork/sap-abap-cowork-plugin.zip`, validated against Microsoft's
+manifest schema before it is written. The ZIP holds the five skills, the icons, and a
+connector entry with your URL and auth config ID. It holds no passwords. Rebuild and
+re-upload whenever the URL, the sign-in registration, or the skills change.
+
+**Step 4: upload and use** ([details](#step-4-upload-in-cowork-and-test), five minutes)
+
+1. In Cowork: Customize > Plugins > Upload plugin, choose the ZIP, and in the Share dialog pick
+   yourself or specific colleagues. An administrator can instead upload it in the Microsoft 365
+   admin center so it appears under Discover for everyone.
+2. Each user starts a new conversation, checks under Sources & Skills that the plugin is on,
+   and asks "Which SAP release is my system?". The first time, Cowork asks the user to connect
+   the `sap-system` connector: they sign in with their work account and accept the `SAP.Read`
+   permission, once.
+3. You get: the SAP_BASIS release and support package from `sap_system_info`, and from then on
+   the skills read the release and the objects from the system.
+
+When something changes later: a new server address or sign-in registration means Step 3 and
+Step 4 again (then **Re-share**); a new release of the skills means Step 3 and Step 4 again;
+a new SAP user or password means editing `.env` on the host and `docker compose up -d`.
 
 ## What you get
 

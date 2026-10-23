@@ -72,6 +72,14 @@ test("package: one ZIP per skill and plugin, each skill in one folder named afte
       assert.ok(entries.some((e) => e.path === ".claude-plugin/plugin.json"), `${name} must have .claude-plugin/plugin.json at the root`);
       assert.ok(entries.some((e) => e.path === "LICENSE.txt"), `${name} must include LICENSE.txt at the root`);
     }
+    // The Cowork template carries placeholders, never a real address or secret.
+    const template = readZip(readFileSync(join(out, "copilot-cowork", "plugin-sap-abap-cowork-template.zip")));
+    const templateManifest = JSON.parse(template.find((e) => e.path === "manifest.json").data.toString("utf8"));
+    const remote = templateManifest.agentConnectors[0].toolSource.remoteMcpServer;
+    assert.equal(remote.mcpServerUrl, "https://sap-mcp.example.com/mcp");
+    assert.equal(remote.authorization.referenceId, "REPLACE-WITH-YOUR-AUTH-CONFIG-ID");
+    assert.ok(!template.some((e) => e.path.startsWith("tools/")), "the template declares no tool description file");
+    assert.ok(template.some((e) => e.path === "skills/sap-abap-standard/SKILL.md"));
     const sums = readFileSync(join(out, "SHA256SUMS.txt"), "utf8").trim().split("\n");
     assert.equal(sums.length, written.length);
     for (const w of written) {

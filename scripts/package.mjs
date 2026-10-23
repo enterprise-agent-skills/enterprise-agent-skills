@@ -35,6 +35,7 @@ import { isLocalJunk, walkFiles } from "./lib/fsutil.mjs";
 import { loadRepository, repoUrls, taxonomy } from "./lib/repo-model.mjs";
 import { parseArgs } from "./lib/report.mjs";
 import { createZip } from "./lib/zip.mjs";
+import { buildCoworkTemplate, TEMPLATE_FILE_NAME } from "./cowork-package.mjs";
 
 /** Written into every output folder so a later run knows it may delete that folder. */
 export const OUTPUT_MARKER = ".package-output";
@@ -135,6 +136,14 @@ export function buildPackages({ outDir = join(REPO_ROOT, "dist"), version = null
   // Microsoft 365 Copilot Cowork: SKILL.md, or .claude-plugin/plugin.json, at the archive root.
   for (const s of skills) write(`copilot-cowork/${s.data.name}-copilot-cowork.zip`, createZip(withLicense(s.dir, "")));
   for (const p of plugins) write(`copilot-cowork/plugin-${p.source.name}-copilot-cowork.zip`, createZip(withLicense(p.dir, "")));
+  // The Cowork package with the SAP connector, with placeholders for an organization's own
+  // server address and sign-in registration (see docs/copilot-cowork.md).
+  if (plugins.some((p) => p.source.name === "sap-abap")) {
+    const template = buildCoworkTemplate({ outDir: join(outDir, "copilot-cowork") });
+    const relPath = `copilot-cowork/${TEMPLATE_FILE_NAME}`;
+    if (written.some((w) => w.relPath.split("/").pop() === TEMPLATE_FILE_NAME)) throw new Error(`Duplicate package name ${TEMPLATE_FILE_NAME}.`);
+    written.push({ relPath, size: template.size, sha256: template.sha256 });
+  }
 
   const sums = written.map((w) => `${w.sha256}  ${w.relPath.split("/").pop()}`).join("\n") + "\n";
   writeFileSync(join(outDir, "SHA256SUMS.txt"), sums);
@@ -158,6 +167,8 @@ export function buildPackages({ outDir = join(REPO_ROOT, "dist"), version = null
         what = `Skill \`${s.data.name}\` (plugin \`${s.pluginName}\`)`;
       } else if (w.relPath.startsWith("plugins/")) {
         what = `Plugin \`${name.replace(/^plugin-/, "").replace(/\.zip$/, "")}\` with all platform manifests`;
+      } else if (name === TEMPLATE_FILE_NAME) {
+        what = "Microsoft 365 Copilot Cowork package with the SAP connector, as a template: replace the server address and the auth config ID in manifest.json (docs/copilot-cowork.md, Step 3)";
       } else if (w.relPath.startsWith("copilot-cowork/plugin-")) {
         what = `Plugin \`${name.replace(/^plugin-/, "").replace(/-copilot-cowork\.zip$/, "")}\` for Microsoft 365 Copilot Cowork (Upload plugin): skills only, no connection to a system; a package with a connector is built with \`npm run package:cowork\``;
       } else if (w.relPath.startsWith("copilot-cowork/")) {
