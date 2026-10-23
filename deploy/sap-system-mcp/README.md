@@ -11,8 +11,9 @@ Copilot Cowork --HTTPS, Entra ID token--> Caddy (443) --> sap-system MCP (127.0.
 
 ## What you need
 
-- A Linux host that can reach the SAP system, with Docker Engine and Docker Compose v2. The
-  A4H trial in Docker on the same host works well: the server reaches it at
+- A Linux host that can reach the SAP system's ICM port, with Docker Engine and Docker
+  Compose v2 (Docker runs only the connector; SAP itself can run anywhere, see the next
+  section). The A4H trial in Docker on the same host works well: the server reaches it at
   `http://127.0.0.1:50000`.
 - A DNS name that points at the host, for example the DNS label of an Azure public IP
   (`<label>.<region>.cloudapp.azure.com`). Let's Encrypt issues the certificate for it.
@@ -20,6 +21,23 @@ Copilot Cowork --HTTPS, Entra ID token--> Caddy (443) --> sap-system MCP (127.0.
   stay closed: Caddy uses the TLS-ALPN-01 challenge.
 - For sign-in: a Microsoft Entra ID app registration and the Teams developer portal
   registration described in [docs/copilot-cowork.md](../../docs/copilot-cowork.md).
+
+## Where the SAP system runs does not matter
+
+Docker here runs only the connector (the Python server and Caddy), never SAP. The server
+needs one thing from the SAP system: its ICM HTTP or HTTPS port, the same port ABAP
+Development Tools uses, with the ADT services active in SICF (`/sap/bc/adt`). So the SAP
+system can be:
+
+| SAP runs | Set `SAP_URL` to | Notes |
+|----------|------------------|-------|
+| On its own VM or physical server (the usual case: SAP ECC, S/4HANA on premises or on Azure, AWS, or Google Cloud VMs) | `https://<sap-host>:44300` (HTTPS port of the ICM; the number is the system's, 44300 is the convention for instance 00) | Run the connector on a separate small host in the same network, not on the SAP host. Only this host needs a public DNS name and port 443; the SAP system stays private. If the ICM uses a company certificate, the connector trusts it like any browser; set `SAP_INSECURE=true` only for a self-signed trial certificate |
+| In Docker on the same host as the connector (the A4H trial) | `http://127.0.0.1:50000` | What this folder was tested with |
+| In SAP's private cloud or another managed environment | The HTTPS URL of the ICM that the hosting provider gives you | The connector host must be allowed to reach it (allowlist, VPN, or peering) |
+
+Give the connector's SAP user display authorizations only (for example the authorizations of
+a read-only developer role plus `S_DEVELOP` with activity 03 for the objects it may read).
+The server adds its own guard on top: it refuses every HTTP verb that could change the system.
 
 ## Files
 
@@ -74,6 +92,24 @@ as RFC 9728 prescribes for a resource with a path), and the third `401`, because
 without a token is refused. In demo mode the second call returns 404, because there is no
 sign-in to describe. Logs: `docker compose logs -f mcp` and `docker compose logs -f caddy`
 in `/opt/enterprise-agent-skills/deploy/sap-system-mcp`.
+
+## Without Docker
+
+If the connector host may not run Docker, the server is a single Python file and Caddy is a
+single binary, so the same layout works as two system services. Not verified in this
+repository; the Docker path above is the tested one.
+
+1. Install Python 3.10 or later and `python3 -m pip install "mcp==2.2.0" "httpx==0.28.1" "PyJWT[crypto]==2.15.1" "uvicorn==0.54.0"`
+   in a virtual environment under `/opt/sap-system-mcp`.
+2. Copy `plugins/sap-abap/mcp/sap-system/sap_system_mcp.py` next to it and write the same
+   `.env` as `.env.example` describes (mode 600, owned by a service user).
+3. Run it as a service that loads the env file and starts
+   `python sap_system_mcp.py serve --transport http` with `MCP_BIND_HOST=127.0.0.1` and
+   `MCP_PORT=8000` (for example a systemd unit with `EnvironmentFile=/opt/sap-system-mcp/.env`).
+4. Install Caddy from its package repository, use the `Caddyfile` from this folder with the
+   two placeholders replaced by your host name and email, and let it bind port 443.
+
+The checks under [Check it](#check-it) are the same.
 
 ## Demo mode
 
