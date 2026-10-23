@@ -60,6 +60,15 @@ export const COWORK_APP_ID_NAMESPACE = "64037d54-083e-4536-a66e-fa10de075ad9";
 /** Authorization types this script accepts; the server supports no other (see the guide). */
 export const AUTH_TYPES = ["OAuthPluginVault", "None"];
 export const CONNECTOR_ID = "sap-system";
+
+/**
+ * The template package attached to every release: the same package with placeholders for the
+ * two values that are specific to an organization, so an administrator without Node.js can
+ * unzip it, replace the two values in manifest.json, and zip it again.
+ */
+export const TEMPLATE_MCP_URL = "https://sap-mcp.example.com/mcp";
+export const TEMPLATE_AUTH_CONFIG_ID = "REPLACE-WITH-YOUR-AUTH-CONFIG-ID";
+export const TEMPLATE_FILE_NAME = "plugin-sap-abap-cowork-template.zip";
 /**
  * The server's tool list in the tools/list format, included and referenced from the manifest
  * only with --tools. Cowork discovers tools from the server and does not read this file, and
@@ -253,6 +262,7 @@ export function buildCoworkPackage({
   shortName,
   includeTools = false,
   printTools = runPrintTools,
+  fileName,
 } = {}) {
   const url = checkMcpUrl(mcpUrl);
   const authType = requireString(auth, "--auth");
@@ -363,9 +373,22 @@ export function buildCoworkPackage({
   entries.push({ path: "manifest.json", data: stableJson(manifest) }, { path: "color.png", data: icons.color }, { path: "outline.png", data: icons.outline });
   const zip = createZip(entries);
   mkdirSync(outDir, { recursive: true });
-  const zipPath = join(outDir, `${source.name}-cowork-plugin.zip`);
+  const zipPath = join(outDir, fileName || `${source.name}-cowork-plugin.zip`);
   writeFileSync(zipPath, zip);
   return { zipPath, manifest, entries: entries.map((e) => e.path).sort(), sha256: createHash("sha256").update(zip).digest("hex"), size: zip.length, tools };
+}
+
+/** The template package for releases: placeholders instead of an organization's values. */
+export function buildCoworkTemplate({ outDir = join(REPO_ROOT, "dist", "copilot-cowork") } = {}) {
+  return buildCoworkPackage({
+    plugin: "sap-abap",
+    mcpUrl: TEMPLATE_MCP_URL,
+    auth: "OAuthPluginVault",
+    authConfigId: TEMPLATE_AUTH_CONFIG_ID,
+    outDir,
+    includeTools: false,
+    fileName: TEMPLATE_FILE_NAME,
+  });
 }
 
 const isMain = Boolean(process.argv[1]) && fileURLToPath(import.meta.url) === resolve(process.argv[1]);

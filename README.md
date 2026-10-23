@@ -197,6 +197,7 @@ of this repository attaches these files:
 | `plugin-<plugin>.zip`, for example `plugin-sap-abap.zip` | One plugin, with its skills, any agents, and the manifests for every platform |
 | `<skill>-copilot-cowork.zip`, for example `sap-abap-standard-copilot-cowork.zip` | The same skill with `SKILL.md` at the root of the ZIP, for Microsoft 365 Copilot Cowork |
 | `plugin-<plugin>-copilot-cowork.zip`, for example `plugin-sap-abap-copilot-cowork.zip` | The same plugin with its manifests at the root of the ZIP, for Microsoft 365 Copilot Cowork: the skills only, with no connection to an SAP system (see below) |
+| `plugin-sap-abap-cowork-template.zip` | The Microsoft 365 Copilot Cowork package with the SAP connector, with placeholders for your server address and sign-in registration; see [docs/copilot-cowork.md](docs/copilot-cowork.md) |
 | `all-skills.zip` | Every skill |
 | `SHA256SUMS.txt` | The SHA-256 checksum of each ZIP file |
 | `provenance.sigstore.json` | Signed build provenance for the ZIP files |
