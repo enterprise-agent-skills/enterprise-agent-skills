@@ -153,6 +153,12 @@ Install only the plugins you need. Every skill an agent loads takes up context, 
 skills make the agent's choices less reliable. Every release also has ZIP files of each skill
 and plugin; see [Download skills as ZIP files](#download-skills-as-zip-files).
 
+Why the plugins are cut the way they are: one plugin per product area, so a Fabric engineer
+never loads ABAP skills, and one SAP connection, not one per plugin. Today the only SAP plugin,
+`sap-abap`, carries the `sap-system` server, so there is nothing extra to install. When a
+second SAP plugin arrives, the server moves into its own `sap-system` plugin that the SAP
+plugins depend on, and the connection is still set up once; see the roadmap.
+
 ## Skill catalog
 
 <!-- BEGIN GENERATED: catalog (edit with npm run build) -->

@@ -35,7 +35,11 @@ items under "Next" are not built yet.
 3. **Live model evaluations (opt-in).** Enable the `live-evals` workflow with a Copilot token
    to run the generated Vally specs against real agents and publish scores per skill.
 4. **More SAP skills.** CDS view entities and access control, Fiori elements annotations, and
-   UI5, each with release metadata and tests.
+   UI5, each with release metadata and tests. With the second SAP plugin, the `sap-system`
+   server moves out of `sap-abap` into its own plugin that the SAP plugins depend on (a
+   Claude Code plugin dependency; an extra install elsewhere), so there is one SAP connection
+   however many SAP plugins exist. The registry already lists the server as its own entry, so
+   this is a folder move and manifest changes.
 5. **Report abaplint release-gating gaps upstream.** The fixtures document statements that
    abaplint accepts on releases that are too old; sharing them helps every abaplint user.
 6. **Migrate legacy drafts.** Drafts from earlier work are not in this repository. Each is
