@@ -187,6 +187,40 @@ its env file, so everyone whose Entra token passes the checks reads with that SA
 authorizations. Give that SAP user display authorizations only, and limit who can sign in to
 the connector through the Entra scope and your tenant's consent settings.
 
+## Enterprise topology: the same server behind Azure API Management
+
+The setup in this guide is the smallest complete one: the sap-system server signs in to SAP
+with one read-only SAP user, and every Cowork user who passes the Entra ID check reads with
+that user's authorizations. Microsoft's reference picture for SAP and MCP adds two things,
+and the server fits into it without a redesign.
+
+```text
+Copilot Studio, Microsoft 365 Copilot, GitHub Copilot ──MCP, Entra ID token──► sap-system MCP server
+                                                                                     │
+                                                                          Azure API Management
+                                                                          (policies: throttling, logging,
+                                                                           token exchange for the user)
+                                                                                     │
+                                                                               SAP ICM (ADT, OData)
+```
+
+| Concern | This guide | With Azure API Management in front of SAP |
+|---------|------------|--------------------------------------------|
+| Who signs in to SAP | One technical SAP user with display authorizations, from the server's env file | Each Cowork user: an APIM policy exchanges the user's Entra ID token for an SAP token (SAP's OAuth 2.0 SAML bearer flow, often called principal propagation), so SAP applies that user's own authorizations and writes that user into its audit logs |
+| Throttling, IP allowlists, caching, central logging | None beyond the server's row limits and its own log | APIM policies, one place for every client |
+| Reaching the SAP system | The connector host must reach the ICM port | Only APIM reaches SAP; the connector reaches APIM |
+| What changes in the server | Nothing | `SAP_URL` points at the APIM endpoint, and the server forwards the user's token instead of a Basic auth header: a small, planned change (open an issue if you need it) |
+
+When to use which: the guide's setup fits trial systems, demos, and read-only exploration where
+a shared display user is acceptable. Use the APIM topology when SAP must see each user, when
+several clients share one entry point, or when security asks for a gateway in front of SAP.
+The skills and the Cowork package are the same in both.
+
+Sources: Microsoft's reference architecture for MCP integration with SAP (Copilot Studio,
+Microsoft 365 Copilot, and GitHub Copilot through an MCP server and Azure API Management with
+Entra ID); SAP's OAuth 2.0 SAML bearer assertion flow for principal propagation (SAP Help
+Portal, "OAuth 2.0 SAML Bearer Assertion Flow"); checked 2026-10-23.
+
 ## Prerequisites
 
 - A Microsoft 365 tenant where Cowork is available. Users of Cowork plugins need Microsoft 365
